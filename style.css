@@ -371,3 +371,57 @@ kbd { font-family: var(--sans); }
 .game-frame[data-state="menu"] .rank-chip,
 .game-frame:not([data-state="playing"]) .hud-boost,
 .game-frame:not([data-state="playing"]) .boost-btn { opacity: 0; pointer-events: none; }
+
+/* ---------- ranks ---------- */
+.avatar-wrap canvas { box-shadow: 0 0 0 3px var(--tier, rgba(255,255,255,.06)), 0 0 30px color-mix(in srgb, var(--tier, #9b7bff) 45%, transparent); }
+.rbadge {
+  --t: #6d68a0; --d: #3a3570;
+  display: inline-grid; place-items: center; flex: none; width: 24px; height: 27px;
+  clip-path: polygon(50% 0, 100% 20%, 100% 64%, 50% 100%, 0 64%, 0 20%);
+  background: linear-gradient(160deg, var(--t) 30%, var(--d));
+  color: #1a1644; font: 700 11px var(--round); letter-spacing: -.3px;
+}
+.rbadge.none { color: var(--muted); }
+.rbadge.mid { width: 34px; height: 38px; font-size: 15px; }
+.rbadge.huge { width: 92px; height: 104px; font-size: 38px; filter: drop-shadow(0 0 24px var(--t)); animation: pop .5s ease; }
+.rank-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 10px; padding: 8px 10px; text-align: left;
+  border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.04); transition: background .15s;
+}
+.rank-row:hover { background: rgba(255,255,255,.09); }
+.rank-txt b { display: block; font: 600 16px var(--round); }
+.rank-txt small { display: block; font-size: 11.5px; color: var(--muted); }
+.board li .rbadge { margin-left: -4px; }
+.snake-pv.sm { width: 64px; height: 16px; }
+.snake-pv.sm::before, .snake-pv.sm::after { width: 6px; height: 6px; right: 3px; background: radial-gradient(circle at 65% 50%, #1a1644 0 1.6px, #fff 2px); }
+.snake-pv.sm::before { top: 1px; } .snake-pv.sm::after { bottom: 1px; }
+.fx-pv.sm { font-size: 24px; }
+.item-btn.locked { background: rgba(255,255,255,.05); color: var(--dim); }
+.ladder-intro { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+.ladder-intro b { color: var(--text); }
+.ladder { display: grid; gap: 10px; }
+.tier { border-radius: 18px; padding: 12px; background: linear-gradient(135deg, color-mix(in srgb, var(--t) 12%, transparent), rgba(255,255,255,.02)); border: 1px solid color-mix(in srgb, var(--t) 30%, transparent); }
+.tier h4 { margin: 0 0 8px 2px; font: 700 15px var(--round); color: var(--t); letter-spacing: .04em; text-transform: uppercase; }
+.rung { display: grid; grid-template-columns: auto 1fr auto 96px; align-items: center; gap: 12px; padding: 8px; border-radius: 12px; opacity: .55; }
+.rung.got { opacity: 1; }
+.rung.current { background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t) 60%, transparent); }
+.rung-info b { display: block; font: 600 15px var(--round); }
+.rung-info small { color: var(--muted); font-size: 12px; }
+.rung .item-btn { margin: 0; padding: 7px; font-size: 13px; }
+.rung .lock { text-align: center; font-size: 12px; color: var(--dim); font-weight: 800; }
+.rankup { position: relative; overflow: visible; }
+.rankup .kicker { color: var(--t, var(--cyan)); }
+.rank-badge-wrap { display: grid; place-items: center; margin: 16px 0 6px; }
+.rankup h2 { margin: 4px 0 14px; }
+.rank-reward { display: flex; align-items: center; gap: 14px; justify-content: center; padding: 12px; margin-bottom: 16px; border-radius: 16px; background: rgba(255,255,255,.05); text-align: left; }
+.rank-reward small { display: block; font-size: 12px; color: var(--muted); }
+.rank-reward b { font: 600 18px var(--round); }
+.confetti { position: absolute; left: 50%; top: 110px; pointer-events: none; }
+.confetti i { position: absolute; width: 8px; height: 12px; border-radius: 2px; background: var(--c); opacity: 0; animation: confetti 1.3s ease-out forwards; }
+@keyframes confetti { 0% { opacity: 1; transform: translate(0, 0) rotate(0); } 100% { opacity: 0; transform: translate(var(--x), calc(var(--y) + 220px)) rotate(var(--r)); } }
+@media (max-width: 520px) {
+  .rung { grid-template-columns: auto 1fr 84px; }
+  .rung-pv { display: none; }
+}
+.snake-pv { display: inline-block; }
+#shopItems.ladder-mode { display: block; }

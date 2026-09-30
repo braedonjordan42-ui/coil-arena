@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
   <div id="loadError" hidden style="position:fixed;z-index:99;left:12px;right:12px;top:12px;padding:14px 16px;border-radius:14px;background:#ff5fa2;color:#fff;font:600 15px/1.45 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.4)"></div>
@@ -54,6 +54,7 @@
         <div class="card profile">
           <div class="avatar-wrap"><canvas id="avatar" width="176" height="176"></canvas><span class="lvl" id="level">1</span></div>
           <button class="name-btn" id="nameBtn" title="Change your name"><span id="playerName">Rookie</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+          <button class="rank-row" id="rankRow" title="See all ranks"></button>
           <div class="xp"><span id="xpFill"></span></div>
           <div class="xp-label"><span>Level <b id="levelText">1</b></span><span id="xpText">0 / 100 XP</span></div>
         </div>
@@ -190,9 +191,24 @@
         <div><span class="kicker"><i></i> Coil club</span><h2 id="shopTitle">Find your <span class="grad">look</span></h2></div>
         <button class="round-btn" id="closeShop" aria-label="Close shop">✕</button>
       </header>
-      <div class="shop-tabs"><button class="shop-tab active" data-tab="skins">Skins</button><button class="shop-tab" data-tab="effects">KO effects</button></div>
+      <div class="shop-tabs"><button class="shop-tab active" data-tab="skins">Skins</button><button class="shop-tab" data-tab="effects">KO effects</button><button class="shop-tab" data-tab="ranks">Ranks</button></div>
       <div class="shop-items" id="shopItems"></div>
       <div class="sheet-foot"><span class="coin"></span><b id="shopWallet">0</b> coins · earn more every run</div>
+    </section>
+  </div>
+
+  <!-- Rank up -->
+  <div class="modal hidden" id="rankModal" role="dialog" aria-modal="true" aria-labelledby="rankTitle">
+    <section class="sheet narrow rankup">
+      <div class="confetti" id="rankConfetti" aria-hidden="true"></div>
+      <span class="kicker"><i></i> Rank up!</span>
+      <div class="rank-badge-wrap" id="rankBadge"></div>
+      <h2 id="rankTitle">Bronze 1</h2>
+      <div class="rank-reward" id="rankReward"></div>
+      <div class="end-actions">
+        <button id="rankEquip" class="primary-btn">Equip it</button>
+        <button id="rankClose" class="ghost-btn">Nice!</button>
+      </div>
     </section>
   </div>
 
@@ -206,8 +222,8 @@
     </section>
   </div>
 
-  <script src="firebase-config.js?v=3"></script>
-  <script src="net.js?v=3"></script>
-  <script src="app.js?v=3"></script>
+  <script src="firebase-config.js?v=4"></script>
+  <script src="net.js?v=4"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

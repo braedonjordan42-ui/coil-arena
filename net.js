@@ -101,8 +101,8 @@ async function initNet(cfg, { onStatus = () => {}, onUser = () => {} } = {}) {
     },
 
     // ---------- global leaderboard ----------
-    submitScore(name, score, skin) {
-      return set(ref(db, `leaderboard/${uid}`), { name: String(name).slice(0, 16) || 'Rookie', score: Math.floor(score), skin: skin || '', t: serverTimestamp() });
+    submitScore(name, score, skin, rk = -1) {
+      return set(ref(db, `leaderboard/${uid}`), { name: String(name).slice(0, 16) || 'Rookie', score: Math.floor(score), skin: skin || '', rk: Number.isInteger(rk) ? rk : -1, t: serverTimestamp() });
     },
     watchLeaderboard(cb, n = 10) {
       return onValue(query(ref(db, 'leaderboard'), orderByChild('score'), limitToLast(n)), s => {

@@ -46,9 +46,66 @@ const EFFECTS = [
   { id: 'confetti', name: 'Confetti', icon: '✺', color: '#b6ff5c', colors: ['#ff5fa2', '#ffd23f', '#b6ff5c', '#38e1ff', '#9b7bff'], n: 34, cost: 500, rarity: 'epic' },
   { id: 'supernova', name: 'Supernova', icon: '✹', color: '#9b7bff', colors: ['#9b7bff', '#38e1ff', '#ffffff', '#ff5fa2'], n: 48, speed: 1.6, cost: 800, rarity: 'legendary' },
 ];
+/* ---------- ranks: 6 tiers x 3 divisions, earned by level ---------- */
+const TIERS = [
+  { id: 'bronze', name: 'Bronze', color: '#f0a56b', dark: '#8a4b1c' },
+  { id: 'silver', name: 'Silver', color: '#dfe4f7', dark: '#6f7896' },
+  { id: 'gold', name: 'Gold', color: '#ffd23f', dark: '#b37a00' },
+  { id: 'platinum', name: 'Platinum', color: '#5cffc8', dark: '#1a8a70' },
+  { id: 'diamond', name: 'Diamond', color: '#38e1ff', dark: '#2a4fd7' },
+  { id: 'champion', name: 'Champion', color: '#ff5fa2', dark: '#7b4bff' },
+];
+const RANK_LEVELS = [2, 3, 5, 7, 9, 11, 13, 15, 18, 21, 24, 27, 30, 34, 38, 42, 46, 50];
+const RANK_SKINS = [
+  { id: 'bronze', name: 'Bronze', colors: ['#f0a56b', '#ffd2ad'] },
+  { id: 'bronze-elite', name: 'Bronze Elite', colors: ['#c8773c', '#ffe1c2', '#f0a56b', '#7a3f16'], elite: true },
+  { id: 'silver', name: 'Silver', colors: ['#dfe4f7', '#a3acc9'] },
+  { id: 'silver-elite', name: 'Silver Elite', colors: ['#ffffff', '#b9c2e0', '#8790b3', '#e6ebff'], elite: true },
+  { id: 'gold', name: 'Gold', colors: ['#ffd23f', '#ffeb99'] },
+  { id: 'gold-elite', name: 'Gold Elite', colors: ['#ffd23f', '#fff4c2', '#e8a800', '#ffb84d'], elite: true },
+  { id: 'platinum', name: 'Platinum', colors: ['#5cffc8', '#c8fff0'] },
+  { id: 'platinum-elite', name: 'Platinum Elite', colors: ['#5cffc8', '#ffffff', '#38e1ff', '#1fbf95'], elite: true },
+  { id: 'diamond', name: 'Diamond', colors: ['#38e1ff', '#c2f6ff'] },
+  { id: 'diamond-elite', name: 'Diamond Elite', colors: ['#38e1ff', '#ffffff', '#9b7bff', '#2a8cff'], elite: true },
+  { id: 'champion', name: 'Champion', colors: ['#ff5fa2', '#ffd23f'], crown: true },
+  { id: 'champion-elite', name: 'Legend', colors: ['#ff5fa2', '#ffd23f', '#ffffff', '#9b7bff', '#38e1ff'], elite: true, crown: true },
+];
+const RANK_EFFECTS = [
+  { id: 'bronze-fx', name: 'Copper sparks', icon: '✧', color: '#f0a56b', colors: ['#f0a56b', '#ffd2ad', '#ffffff'], n: 24 },
+  { id: 'silver-fx', name: 'Frostbite', icon: '❄', color: '#dfe4f7', colors: ['#dfe4f7', '#ffffff', '#38e1ff'], n: 28, ring: true },
+  { id: 'gold-fx', name: 'Gold rush', icon: '✪', color: '#ffd23f', colors: ['#ffd23f', '#ffeb99', '#ffffff'], n: 34, ring: true },
+  { id: 'platinum-fx', name: 'Aurora wave', icon: '❋', color: '#5cffc8', colors: ['#5cffc8', '#38e1ff', '#ffffff'], n: 38, ring: true },
+  { id: 'diamond-fx', name: 'Shatter', icon: '◆', color: '#38e1ff', colors: ['#38e1ff', '#ffffff', '#9b7bff'], n: 44, speed: 1.8, ring: true },
+  { id: 'champion-fx', name: 'Crown burst', icon: '♛', color: '#ff5fa2', colors: ['#ff5fa2', '#ffd23f', '#ffffff', '#9b7bff'], n: 60, speed: 1.9, ring: true },
+];
+const RANKS = [];
+TIERS.forEach((tier, t) => {
+  for (let d = 1; d <= 3; d++) {
+    const i = t * 3 + d - 1;
+    const reward = d === 1 ? { type: 'skin', id: tier.id } : d === 2 ? { type: 'effect', id: `${tier.id}-fx` } : { type: 'skin', id: `${tier.id}-elite` };
+    RANKS.push({ i, tier, div: d, level: RANK_LEVELS[i], name: `${tier.name} ${d}`, reward });
+  }
+});
+for (const r of RANKS) {
+  const list = r.reward.type === 'skin' ? RANK_SKINS : RANK_EFFECTS;
+  Object.assign(list.find(x => x.id === r.reward.id), { cost: 0, rarity: 'rank', rank: r.i });
+}
+function rankIndexFor(level) { let r = -1; for (const k of RANKS) if (level >= k.level) r = k.i; return r; }
+function rankName(i) { return i >= 0 && RANKS[i] ? RANKS[i].name : 'Unranked'; }
+function grantRankRewards(s) {
+  const ri = rankIndexFor(s.level);
+  for (let i = 0; i <= ri; i++) {
+    const rw = RANKS[i].reward;
+    const list = rw.type === 'skin' ? s.ownedSkins : s.ownedEffects;
+    if (!list.includes(rw.id)) list.push(rw.id);
+  }
+}
+
 const FOOD_COLORS = ['#ff5fa2', '#38e1ff', '#b6ff5c', '#ffd23f', '#9b7bff', '#ff9f43', '#5cffc8'];
 const BOT_NAMES = ['Noodle', 'Pickle', 'Mochi', 'Sprout', 'Wiggles', 'Zippy', 'Biscuit', 'Nibbles', 'Doodle', 'Taco', 'Pretzel', 'Waffles', 'Bean', 'Jellybean', 'Squiggle', 'Boba', 'Kiwi', 'Pixel', 'Gizmo', 'Twix', 'Sir Slithers', 'Lil Snek', 'Dumpling', 'Coco'];
 const DEATH_TITLES = ['Oof, bonked!', 'So close!', 'Coiled!', 'Whoops!', 'Snek down!'];
+SKINS.push(...RANK_SKINS);
+EFFECTS.push(...RANK_EFFECTS);
 const skinById = id => SKINS.find(s => s.id === id) || SKINS[0];
 const effectById = id => EFFECTS.find(e => e.id === id) || EFFECTS[0];
 
@@ -68,6 +125,8 @@ function normalize(raw) {
   s.settings = { ...freshSave().settings, ...(raw.settings || {}) };
   s.ownedSkins = [...new Set(['aurora', ...(Array.isArray(s.ownedSkins) ? s.ownedSkins : Object.values(s.ownedSkins || {}))])].filter(id => SKINS.some(k => k.id === id));
   s.ownedEffects = [...new Set(['spark', ...(Array.isArray(s.ownedEffects) ? s.ownedEffects : Object.values(s.ownedEffects || {}))])].filter(id => EFFECTS.some(k => k.id === id));
+  for (const k of ['coins', 'xp', 'level']) s[k] = Math.max(k === 'level' ? 1 : 0, Math.floor(Number(s[k]) || 0));
+  grantRankRewards(s);
   if (!s.ownedSkins.includes(s.skin)) s.skin = 'aurora';
   if (!s.ownedEffects.includes(s.effect)) s.effect = 'spark';
   for (const k of ['coins', 'xp', 'level', 'best', 'kills', 'runs', 'streak', 'submittedBest']) s[k] = Math.max(k === 'level' ? 1 : 0, Math.floor(Number(s[k]) || 0));
@@ -159,6 +218,7 @@ const G = {
   player: null,
   foods: [],
   particles: [],
+  rings: [],
   texts: [],
   remote: {},
   cam: { x: 0, y: 0, zoom: 1, shake: 0 },
@@ -222,8 +282,9 @@ function spawnBot(awayFrom = null) {
   const boss = Math.random() < 0.12;
   const used = new Set(G.snakes.map(s => s.name));
   const name = pick(BOT_NAMES.filter(n => !used.has(n))) || pick(BOT_NAMES);
-  const b = makeSnake({ x: p.x, y: p.y, name, skin: pick(SKINS).id, isBot: true, mass: boss ? rand(80, 160) | 0 : rand(10, 45) | 0 });
+  const b = makeSnake({ x: p.x, y: p.y, name, skin: pick(SKINS.filter(k => !k.rank && k.rank !== 0)).id, isBot: true, mass: boss ? rand(80, 160) | 0 : rand(10, 45) | 0 });
   if (boss) b.skill = rand(0.75, 1);
+  b.rk = boss ? (rand(6, 15) | 0) : (rand(-1, 9) | 0);
   G.snakes.push(b);
   return b;
 }
@@ -441,6 +502,7 @@ function onPlayerEat(f) {
 
 /* ---------- effects ---------- */
 function burst(x, y, fx) {
+  if (fx.ring) { G.rings.push({ x, y, life: 0.7, color: fx.colors[0], max: 120 * (fx.speed || 1) }); G.rings.push({ x, y, life: 0.9, color: fx.colors[1] || '#fff', max: 70 * (fx.speed || 1) }); }
   const n = fx.n || 16, sp = fx.speed || 1;
   for (let i = 0; i < n; i++) {
     const a = rand(0, TAU), v = rand(60, 220) * sp;
@@ -526,7 +588,7 @@ function playerDied(cause) {
   addXp(xp);
   persist();
   if (net && save.best > save.submittedBest) {
-    net.submitScore(save.name || 'Rookie', save.best, save.skin).then(() => { save.submittedBest = save.best; writeLocal(); }).catch(() => {});
+    net.submitScore(save.name || 'Rookie', save.best, save.skin, rankIndexFor(save.level)).then(() => { save.submittedBest = save.best; writeLocal(); }).catch(() => {});
   }
   G.deathInfo = {
     title: cause.quit ? 'Run ended' : newBest && score > 20 ? 'New record!' : pick(DEATH_TITLES),
@@ -566,8 +628,14 @@ function xpNeed(level = save.level) { return 100 + (level - 1) * 60; }
 function addXp(n) {
   save.xp += n;
   let leveled = false;
+  const before = rankIndexFor(save.level);
   while (save.xp >= xpNeed()) { save.xp -= xpNeed(); save.level++; save.coins += 40; leveled = true; }
-  if (leveled) { setTimeout(() => { sfx.level(); toast(`Level ${save.level}! +40 coins`); }, 900); }
+  const after = rankIndexFor(save.level);
+  if (after > before) {
+    grantRankRewards(save);
+    const gained = RANKS.slice(before + 1, after + 1);
+    setTimeout(() => showRankUp(gained), 1700);
+  } else if (leveled) { setTimeout(() => { sfx.level(); toast(`Level ${save.level}! +40 coins`); }, 900); }
 }
 
 /* =========================================================
@@ -589,6 +657,7 @@ function onRemotePlayers(players) {
     r.mass = Math.max(0, Number(v.s) || 0);
     r.angle = Number(v.a) || 0;
     r.boosting = !!v.bo;
+    r.rk = Number.isInteger(v.rk) ? clamp(v.rk, -1, RANKS.length - 1) : -1;
     r.targetPts = target;
     seen.add(uid);
   }
@@ -635,7 +704,7 @@ function publishPlayer() {
   for (let i = 0; i < n; i += k) b.push(Math.round(p.pts[i].x), Math.round(p.pts[i].y));
   const l = p.pts[n - 1];
   if ((n - 1) % k) b.push(Math.round(l.x), Math.round(l.y));
-  net.publish({ n: save.name || 'Rookie', s: Math.floor(p.mass), c: save.skin, a: Math.round(p.angle * 100) / 100, bo: p.boosting ? 1 : 0, k, b });
+  net.publish({ n: save.name || 'Rookie', s: Math.floor(p.mass), c: save.skin, a: Math.round(p.angle * 100) / 100, bo: p.boosting ? 1 : 0, rk: rankIndexFor(save.level), k, b });
 }
 
 /* =========================================================
@@ -687,6 +756,8 @@ function update(dt) {
 
   for (const q of G.particles) { q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.95; q.vy *= 0.95; }
   G.particles = G.particles.filter(q => q.life > 0);
+  for (const g of G.rings) g.life -= dt;
+  G.rings = G.rings.filter(g => g.life > 0);
   for (const t of G.texts) { t.life -= dt; t.y -= 40 * dt; }
   G.texts = G.texts.filter(t => t.life > 0);
 
@@ -829,6 +900,15 @@ function render() {
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
 
+  for (const g of G.rings) {
+    const t = 1 - g.life / 0.9;
+    ctx.globalAlpha = clamp(g.life * 1.4, 0, 1);
+    ctx.strokeStyle = g.color; ctx.lineWidth = 6 * (1 - t) + 1;
+    ctx.beginPath(); ctx.arc(g.x, g.y, 10 + g.max * t, 0, TAU); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+
   // floating text
   ctx.textAlign = 'center';
   ctx.font = '700 22px Fredoka, sans-serif';
@@ -884,6 +964,20 @@ function drawSnake(s, isMe) {
   ctx.lineWidth = r * 0.5;
   ctx.stroke();
 
+  // elite skins twinkle
+  if (skinById(s.skin).elite) {
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 8; i < n; i += 22) {
+      const tw = Math.sin(G.time * 5 + i * 0.7);
+      if (tw < 0.2) continue;
+      ctx.globalAlpha = tw;
+      const sz = r * 1.6 * tw;
+      ctx.drawImage(glowSprite('#ffffff'), pts[i].x - sz / 2 - r * 0.25, pts[i].y - sz / 2 - r * 0.25, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   // head
   const hx = s.x, hy = s.y, a = s.angle;
   const fx = Math.cos(a), fy = Math.sin(a), px = -fy, py = fx;
@@ -919,16 +1013,39 @@ function drawSnake(s, isMe) {
   }
 
   // name tag
+  if (skinById(s.skin).crown) drawCrown(hx, hy - r * 1.05, r);
   const label = isMe ? (save.name || 'You') : s.name;
+  const rk = isMe ? rankIndexFor(save.level) : (s.rk ?? -1);
   ctx.font = '700 13px Nunito, sans-serif';
   ctx.textAlign = 'center';
-  const tw = ctx.measureText(label).width + 16;
-  const ty = hy - r - 26;
+  const bw = rk >= 0 ? 20 : 0;
+  const tw = ctx.measureText(label).width + 16 + bw;
+  const ty = hy - r - (skinById(s.skin).crown ? 36 : 26);
   ctx.fillStyle = isMe ? 'rgba(56,225,255,0.22)' : 'rgba(10,8,30,0.55)';
   pill(hx - tw / 2, ty, tw, 19, 9.5);
   ctx.fill();
+  if (rk >= 0) drawRankChip(hx - tw / 2 + 11, ty + 9.5, RANKS[rk]);
   ctx.fillStyle = isMe ? '#bff4ff' : '#e9e6ff';
-  ctx.fillText(label, hx, ty + 14);
+  ctx.fillText(label, hx + bw / 2, ty + 14);
+}
+function drawRankChip(x, y, R) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - 8); ctx.lineTo(x + 7, y - 5); ctx.lineTo(x + 7, y + 2); ctx.lineTo(x, y + 8); ctx.lineTo(x - 7, y + 2); ctx.lineTo(x - 7, y - 5); ctx.closePath();
+  ctx.fillStyle = R.tier.color; ctx.fill();
+  ctx.fillStyle = '#1a1644';
+  ctx.font = '800 9px Nunito, sans-serif';
+  ctx.fillText(R.tier.name[0] + R.div, x, y + 3);
+  ctx.font = '700 13px Nunito, sans-serif';
+}
+function drawCrown(x, y, r) {
+  const w = r * 1.2, h = r * 0.75;
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2, y); ctx.lineTo(x - w / 2, y - h); ctx.lineTo(x - w / 4, y - h * 0.45); ctx.lineTo(x, y - h * 1.1);
+  ctx.lineTo(x + w / 4, y - h * 0.45); ctx.lineTo(x + w / 2, y - h); ctx.lineTo(x + w / 2, y); ctx.closePath();
+  ctx.fillStyle = '#ffd23f'; ctx.fill();
+  ctx.strokeStyle = 'rgba(120,70,0,0.6)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = '#ff5fa2';
+  ctx.beginPath(); ctx.arc(x, y - h * 0.35, r * 0.12, 0, TAU); ctx.fill();
 }
 function pill(x, y, w, h, r) {
   ctx.beginPath();
@@ -979,16 +1096,17 @@ function renderBoard() {
     const rows = collidables.filter(s => !s.dead).map(s => ({
       name: s === G.player ? save.name || 'Rookie' : s.name, score: Math.floor(s.mass), color: skinColors(s)[0],
       me: s === G.player, tag: s.isRemote ? '' : s.isBot && G.mode === 'online' ? 'bot' : '',
+      rk: s === G.player ? rankIndexFor(save.level) : (s.rk ?? -1),
     })).sort((a, b) => b.score - a.score);
     const top = rows.slice(0, 8);
     const meIdx = rows.findIndex(r => r.me);
     if (meIdx >= 8) top[7] = { ...rows[meIdx], rank: meIdx + 1 };
-    el.innerHTML = top.map((r, i) => row(r.rank || i + 1, r.name, r.score, r.color, r.me, r.tag)).join('');
+    el.innerHTML = top.map((r, i) => row(r.rank || i + 1, r.name, r.score, r.color, r.me, r.tag, r.rk)).join('');
     note.textContent = G.mode === 'online' ? (Object.keys(G.remote).length ? `${Object.keys(G.remote).length} real player${Object.keys(G.remote).length > 1 ? 's' : ''} in your arena` : 'No one else here yet — share your link!') : '';
   } else {
     if (G.globalRows) {
       el.innerHTML = G.globalRows.length
-        ? G.globalRows.map((r, i) => row(i + 1, r.name, r.score, skinById(r.skin).colors[0], net && r.uid === net.uid)).join('')
+        ? G.globalRows.map((r, i) => row(i + 1, r.name, r.score, skinById(r.skin).colors[0], net && r.uid === net.uid, '', Number.isInteger(r.rk) ? r.rk : -1)).join('')
         : '<li class="empty">No scores yet — be the first!</li>';
       note.textContent = 'Worldwide best scores.';
     } else {
@@ -999,8 +1117,8 @@ function renderBoard() {
     }
   }
 }
-function row(rank, name, score, color, me, tag = '') {
-  return `<li class="${me ? 'me' : ''}"><span class="rk">${rank}</span><span class="dot" style="background:${color};--c:${color}"></span><span class="nm">${esc(name)}${me ? ' <small>(you)</small>' : ''}${tag ? ` <small>${tag}</small>` : ''}</span><span class="sc">${Number(score).toLocaleString()}</span></li>`;
+function row(rank, name, score, color, me, tag = '', rk = null) {
+  return `<li class="${me ? 'me' : ''}"><span class="rk">${rank}</span><span class="dot" style="background:${color};--c:${color}"></span>${rk !== null && rk >= 0 ? badgeHTML(rk) : ''}<span class="nm">${esc(name)}${me ? ' <small>(you)</small>' : ''}${tag ? ` <small>${tag}</small>` : ''}</span><span class="sc">${Number(score).toLocaleString()}</span></li>`;
 }
 
 function renderProfile() {
@@ -1016,6 +1134,9 @@ function renderProfile() {
   $('#totalRuns').textContent = save.runs.toLocaleString();
   $('#soundBtn').classList.toggle('muted', !save.settings.sound);
   $('#shopPreview').innerHTML = SKINS.slice(1, 5).map(s => `<span style="background:${skinCss(s)}"></span>`).join('');
+  const ri = rankIndexFor(save.level), next = RANKS[ri + 1];
+  $('#rankRow').innerHTML = `${badgeHTML(ri, 'mid')}<span class="rank-txt"><b>${rankName(ri)}</b><small>${next ? `Next: ${next.name} at level ${next.level}` : 'Top rank reached!'}</small></span>`;
+  $('.avatar-wrap').style.setProperty('--tier', ri >= 0 ? RANKS[ri].tier.color : '#9b7bff');
   drawAvatar();
   renderDaily();
   if (G.player && !G.player.dead) { G.player.skin = save.skin; G.player.name = save.name || 'Rookie'; }
@@ -1072,10 +1193,71 @@ function claimDaily() {
   toast(`Daily drop! +${reward} coins`);
 }
 
+/* ---------- ranks UI ---------- */
+function badgeHTML(ri, cls = '') {
+  if (ri < 0 || !RANKS[ri]) return `<span class="rbadge none ${cls}" title="Unranked">–</span>`;
+  const R = RANKS[ri];
+  return `<span class="rbadge ${cls}" style="--t:${R.tier.color};--d:${R.tier.dark}" title="${R.name}">${R.tier.name[0]}${R.div}</span>`;
+}
+function rewardItem(rw) { return rw.type === 'skin' ? skinById(rw.id) : effectById(rw.id); }
+function rewardPreview(rw) {
+  const it = rewardItem(rw);
+  return rw.type === 'skin'
+    ? `<span class="snake-pv sm" style="background:${skinCss(it)};--glow:${it.colors[0]}88"></span>`
+    : `<span class="fx-pv sm" style="color:${it.color}">${it.icon}</span>`;
+}
+let rankQueue = [];
+function showRankUp(ranks) {
+  rankQueue.push(...ranks);
+  if (!$('#rankModal').classList.contains('hidden')) return;
+  nextRankUp();
+}
+function nextRankUp() {
+  const R = rankQueue.shift();
+  if (!R) { hide('#rankModal'); return; }
+  const it = rewardItem(R.reward);
+  $('#rankBadge').innerHTML = badgeHTML(R.i, 'huge');
+  $('#rankTitle').textContent = R.name;
+  $('#rankReward').innerHTML = `${rewardPreview(R.reward)}<span><small>${R.reward.type === 'skin' ? 'New skin' : 'New KO effect'} unlocked</small><b>${esc(it.name)}</b></span>`;
+  $('#rankEquip').dataset.type = R.reward.type;
+  $('#rankEquip').dataset.id = R.reward.id;
+  $('#rankModal').style.setProperty('--t', R.tier.color);
+  show('#rankModal');
+  sfx.level();
+  burstConfetti(R.tier.color);
+}
+function burstConfetti(color) {
+  const box = $('#rankConfetti');
+  box.innerHTML = Array.from({ length: 28 }, (_, i) => `<i style="--x:${rand(-160, 160) | 0}px;--y:${rand(-190, -60) | 0}px;--r:${rand(-300, 300) | 0}deg;--c:${pick([color, '#fff', '#ffd23f', '#ff5fa2', '#38e1ff'])};animation-delay:${(i % 6) * 0.03}s"></i>`).join('');
+}
+function renderLadder() {
+  const ri = rankIndexFor(save.level);
+  return `<div class="ladder">${TIERS.map((tier, t) => `
+    <section class="tier" style="--t:${tier.color};--d:${tier.dark}">
+      <h4>${tier.name}</h4>
+      ${[0, 1, 2].map(d => {
+        const R = RANKS[t * 3 + d], got = R.i <= ri, it = rewardItem(R.reward);
+        const owned = R.reward.type === 'skin' ? save.skin === it.id : save.effect === it.id;
+        const btn = !got ? `<span class="lock">Level ${R.level}</span>`
+          : owned ? '<button class="item-btn" disabled>Equipped</button>'
+          : `<button class="item-btn eq" data-id="${it.id}" data-type="${R.reward.type}">Equip</button>`;
+        return `<div class="rung ${got ? 'got' : ''} ${R.i === ri ? 'current' : ''}">${badgeHTML(R.i)}<div class="rung-info"><b>${R.name}</b><small>${R.reward.type === 'skin' ? 'Skin' : 'KO effect'} · ${esc(it.name)}</small></div><div class="rung-pv">${rewardPreview(R.reward)}</div>${btn}</div>`;
+      }).join('')}
+    </section>`).join('')}</div>`;
+}
+
 /* ---------- shop ---------- */
 let shopTab = 'skins';
 function openShop() { renderShop(); show('#shopModal'); sfx.click(); if (G.state === 'playing' && G.mode === 'solo') pause(); }
 function renderShop() {
+  $('#shopWallet').textContent = save.coins.toLocaleString();
+  $('#shopItems').classList.toggle('ladder-mode', shopTab === 'ranks');
+  if (shopTab === 'ranks') {
+    const ri = rankIndexFor(save.level), next = RANKS[ri + 1];
+    $('#shopItems').innerHTML = `<p class="ladder-intro">You're <b>${rankName(ri)}</b> (level ${save.level}). ${next ? `Reach level ${next.level} for <b>${next.name}</b>.` : 'You made it to the top!'} Every rank unlocks an exclusive reward.</p>` + renderLadder();
+    $$('#shopItems .item-btn[data-id]').forEach(b => { b.onclick = () => buyOrEquip(b.dataset.id, b.dataset.type); });
+    return;
+  }
   const list = shopTab === 'skins' ? SKINS : EFFECTS;
   const owned = shopTab === 'skins' ? save.ownedSkins : save.ownedEffects;
   const equipped = shopTab === 'skins' ? save.skin : save.effect;
@@ -1085,18 +1267,21 @@ function renderShop() {
     const pv = shopTab === 'skins'
       ? `<span class="snake-pv" style="background:${skinCss(it)};--glow:${it.colors[0]}88"></span>`
       : `<span class="fx-pv" style="color:${it.color}">${it.icon}</span>`;
+    const R = it.rarity === 'rank' ? RANKS[it.rank] : null;
     const btn = eq ? '<button class="item-btn" disabled>Equipped</button>'
       : own ? `<button class="item-btn eq" data-id="${it.id}">Equip</button>`
+      : R ? `<button class="item-btn locked" data-id="${it.id}">Reach ${R.name}</button>`
       : `<button class="item-btn buy ${save.coins < it.cost ? 'cant' : ''}" data-id="${it.id}"><span class="coin"></span>${it.cost}</button>`;
-    return `<article class="item ${eq ? 'equipped' : ''}"><div class="item-pv">${pv}</div><div class="item-name">${esc(it.name)}</div><div class="item-rarity r-${it.rarity}">${it.rarity}</div>${btn}</article>`;
+    return `<article class="item ${eq ? 'equipped' : ''}"><div class="item-pv">${pv}</div><div class="item-name">${esc(it.name)}</div><div class="item-rarity r-${it.rarity}" ${R ? `style="color:${R.tier.color}"` : ''}>${R ? `${R.name} reward` : it.rarity}</div>${btn}</article>`;
   }).join('');
   $$('#shopItems .item-btn[data-id]').forEach(b => { b.onclick = () => buyOrEquip(b.dataset.id); });
 }
-function buyOrEquip(id) {
-  const skins = shopTab === 'skins';
+function buyOrEquip(id, type) {
+  const skins = type ? type === 'skin' : shopTab === 'skins';
   const item = (skins ? SKINS : EFFECTS).find(x => x.id === id);
   const owned = skins ? save.ownedSkins : save.ownedEffects;
   if (!item) return;
+  if (!owned.includes(id) && item.rarity === 'rank') { toast(`Reach ${RANKS[item.rank].name} (level ${RANKS[item.rank].level}) to unlock`); return; }
   if (!owned.includes(id)) {
     if (save.coins < item.cost) { toast(`Need ${item.cost - save.coins} more coins`); sfx.tone(200, 0.12, { type: 'square', vol: 0.04 }); return; }
     save.coins -= item.cost;
@@ -1197,7 +1382,7 @@ async function syncProfile() {
       if (save.name) hide('#nameModal');
     }
     scheduleCloudSave();
-    if (save.best > 0) net.submitScore(save.name || 'Rookie', save.best, save.skin).then(() => { save.submittedBest = save.best; writeLocal(); }).catch(() => {});
+    if (save.best > 0) net.submitScore(save.name || 'Rookie', save.best, save.skin, rankIndexFor(save.level)).then(() => { save.submittedBest = save.best; writeLocal(); }).catch(() => {});
   } catch (e) { console.warn('Could not load cloud profile', e); }
 }
 
@@ -1238,7 +1423,7 @@ function pointerPos(e) {
   input.hasPointer = true;
   input.lastPointer = performance.now();
 }
-function modalOpen() { return !$('#shopModal').classList.contains('hidden') || !$('#nameModal').classList.contains('hidden'); }
+function modalOpen() { return !$('#rankModal').classList.contains('hidden') || !$('#shopModal').classList.contains('hidden') || !$('#nameModal').classList.contains('hidden'); }
 
 function bindEvents() {
   new ResizeObserver(resize).observe(canvas);
@@ -1268,6 +1453,9 @@ function bindEvents() {
   $$('.board-tab').forEach(b => { b.onclick = () => { $$('.board-tab').forEach(x => x.classList.toggle('active', x === b)); boardTab = b.dataset.board; renderBoard(); }; });
   $$('.mode').forEach(b => { b.onclick = () => { sfx.click(); setMode(b.dataset.mode); }; });
   $('#dailyBtn').onclick = claimDaily;
+  $('#rankRow').onclick = () => { shopTab = 'ranks'; $$('.shop-tab').forEach(x => x.classList.toggle('active', x.dataset.tab === 'ranks')); openShop(); };
+  $('#rankClose').onclick = () => { sfx.click(); nextRankUp(); };
+  $('#rankEquip').onclick = () => { const b = $('#rankEquip'); buyOrEquip(b.dataset.id, b.dataset.type); nextRankUp(); };
   $('#nameBtn').onclick = () => { $('#nameInput').value = save.name; show('#nameModal'); setTimeout(() => $('#nameInput').focus(), 30); };
   $('#saveName').onclick = () => {
     const n = $('#nameInput').value.replace(/\s+/g, ' ').trim().slice(0, 16);
@@ -1277,7 +1465,7 @@ function bindEvents() {
     hide('#nameModal');
     sfx.click();
     toast(`Hi, ${n}!`);
-    if (net && save.best > 0) net.submitScore(n, save.best, save.skin).catch(() => {});
+    if (net && save.best > 0) net.submitScore(n, save.best, save.skin, rankIndexFor(save.level)).catch(() => {});
   };
   $('#nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#saveName').click(); } });
   $('#nameModal').addEventListener('click', e => { if (e.target.id === 'nameModal' && save.name) hide('#nameModal'); });
@@ -1321,6 +1509,7 @@ function bindEvents() {
       return;
     }
     if (e.key === 'Escape') {
+      if (!$('#rankModal').classList.contains('hidden')) { nextRankUp(); return; }
       if (!$('#shopModal').classList.contains('hidden')) { hide('#shopModal'); return; }
       if (!$('#nameModal').classList.contains('hidden') && save.name) { hide('#nameModal'); return; }
       if (G.state === 'playing') pause(); else if (G.state === 'paused') resume();
@@ -1376,5 +1565,5 @@ function init() {
 init();
 
 // exposed for debugging in the browser console
-window.coil = { G, get save() { return save; }, ready: true };
+window.coil = { G, get save() { return save; }, ready: true, addXp: n => { addXp(n); persist(); }, RANKS };
 })();
