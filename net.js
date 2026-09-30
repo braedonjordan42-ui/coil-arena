@@ -20,7 +20,7 @@ async function initNet(cfg, { onStatus = () => {}, onUser = () => {} } = {}) {
     import(`${SDK}/firebase-database.js`),
   ]);
   const { initializeApp } = appMod;
-  const { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, linkWithPopup, signInWithPopup, signInWithCredential } = authMod;
+  const { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, linkWithPopup, signInWithPopup, signInWithCredential, EmailAuthProvider, linkWithCredential, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } = authMod;
   const { getDatabase, ref, set, update, remove, get, onValue, onDisconnect, query, orderByChild, limitToLast, equalTo, push, onChildAdded, serverTimestamp } = dbMod;
 
   const app = initializeApp(cfg);
@@ -63,7 +63,8 @@ async function initNet(cfg, { onStatus = () => {}, onUser = () => {} } = {}) {
   });
 
   function describeUser(u) {
-    return { uid: u.uid, anonymous: u.isAnonymous, name: u.displayName || '', email: u.email || '' };
+    const providers = (u.providerData || []).map(p => p.providerId);
+    return { uid: u.uid, anonymous: u.isAnonymous, name: u.displayName || '', email: u.email || '', providers };
   }
 
   await ready;
@@ -89,6 +90,35 @@ async function initNet(cfg, { onStatus = () => {}, onUser = () => {} } = {}) {
       user = auth.currentUser;
       onUser(describeUser(user), false);
       return describeUser(user);
+    },
+
+    // ---------- email + password ----------
+    // Creating an account while playing as a guest upgrades that guest, so progress is kept.
+    async signUpEmail(email, password) {
+      const cur = auth.currentUser;
+      if (cur && cur.isAnonymous) {
+        const cred = EmailAuthProvider.credential(email, password);
+        await linkWithCredential(cur, cred);
+        await cur.reload();
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+      }
+      user = auth.currentUser;
+      onUser(describeUser(user), false);
+      return describeUser(user);
+    },
+    async signInEmail(email, password) {
+      await signInWithEmailAndPassword(auth, email, password);
+      user = auth.currentUser;
+      return describeUser(user);
+    },
+    resetPassword(email) {
+      return sendPasswordResetEmail(auth, email);
+    },
+    async signOutUser() {
+      api.leaveRoom();
+      if (presenceRef) await remove(presenceRef).catch(() => {});
+      await signOut(auth);
     },
 
     // ---------- cloud save ----------
