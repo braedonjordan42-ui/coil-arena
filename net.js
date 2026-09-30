@@ -121,6 +121,16 @@ async function initNet(cfg, { onStatus = () => {}, onUser = () => {} } = {}) {
       await signOut(auth);
     },
 
+    // ---------- developer accounts ----------
+    // An account is a dev only if the project owner added  devs/<uid>: true  in the Firebase console.
+    // Clients can read their own flag but can never write it (see database.rules.json).
+    async checkDev() {
+      try { const s = await get(ref(db, `devs/${uid}`)); return s.val() === true; } catch { return false; }
+    },
+    removeLeaderboardEntry() {
+      return remove(ref(db, `leaderboard/${uid}`));
+    },
+
     // ---------- cloud save ----------
     async loadProfile() {
       const s = await get(ref(db, `profiles/${uid}`));

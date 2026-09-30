@@ -568,7 +568,7 @@ function playerDied(cause) {
   addXp(xp);
   persist();
   if (net && save.best > save.submittedBest) {
-    net.submitScore(save.name || 'Rookie', save.best, save.skin, rankIndexFor(save.level)).then(() => { save.submittedBest = save.best; writeLocal(); }).catch(() => {});
+    submitBest();
   }
   G.deathInfo = {
     title: cause.quit ? 'Run ended' : newBest && score > 20 ? 'New record!' : pick(DEATH_TITLES),
@@ -646,6 +646,7 @@ function onRemotePlayers(players) {
     r.angle = Number(v.a) || 0;
     r.boosting = !!v.bo;
     r.rk = Number.isInteger(v.rk) ? clamp(v.rk, -1, RANKS.length - 1) : -1;
+    r.dev = v.dv === 1;
     r.targetPts = target;
     seen.add(uid);
   }
@@ -692,7 +693,7 @@ function publishPlayer() {
   for (let i = 0; i < n; i += k) b.push(Math.round(p.pts[i].x), Math.round(p.pts[i].y));
   const l = p.pts[n - 1];
   if ((n - 1) % k) b.push(Math.round(l.x), Math.round(l.y));
-  net.publish({ n: save.name || 'Rookie', s: Math.floor(p.mass), c: save.skin, a: Math.round(p.angle * 100) / 100, bo: p.boosting ? 1 : 0, rk: rankIndexFor(save.level), k, b });
+  net.publish({ n: save.name || 'Rookie', s: Math.floor(p.mass), c: save.skin, a: Math.round(p.angle * 100) / 100, bo: p.boosting ? 1 : 0, rk: rankIndexFor(save.level), ...(isDev ? { dv: 1 } : {}), k, b });
 }
 
 /* =========================================================
@@ -711,6 +712,7 @@ function update(dt) {
     G.desired = playerDesired(p);
     steer(p, G.desired, dt);
     updateBoost(p, input.boostKey || input.boostMouse || input.boostTouch, dt);
+    if (isDev && devGod && G.mode === 'solo') p.energy = 100;
   }
   for (const s of G.snakes) if (s.isBot && !s.dead) botThink(s, dt);
   for (const s of G.snakes) if (!s.dead) moveSnake(s, dt);
@@ -720,6 +722,10 @@ function update(dt) {
     if (s.dead) continue;
     if (s === p && G.state !== 'playing') continue;
     const hit = checkCollision(s);
+    if (hit && s === p && isDev && devGod && G.mode === 'solo') {
+      if (hit.wall) { const d = Math.hypot(s.x, s.y) || 1, m = (ARENA_R - s.r * 2) / d; if (m < 1) { s.x *= m; s.y *= m; } s.angle = Math.atan2(-s.y, -s.x); }
+      continue;
+    }
     if (hit) killSnake(s, hit);
   }
   for (const s of G.snakes) if (!s.dead) eatFood(s, dt);
@@ -924,18 +930,30 @@ function drawSnake(s, isMe) {
   // name tag
   const r = s.r, hx = s.x, hy = s.y;
   const label = isMe ? (save.name || 'You') : s.name;
+  const dev = isMe ? isDev : !!s.dev;
   const rk = isMe ? rankIndexFor(save.level) : (s.rk ?? -1);
   ctx.font = '700 13px Nunito, sans-serif';
   ctx.textAlign = 'center';
-  const bw = rk >= 0 ? 20 : 0;
+  const bw = dev ? 34 : rk >= 0 ? 20 : 0;
   const tw = ctx.measureText(label).width + 16 + bw;
   const ty = hy - r - 26 - SK.headroom(sk);
   ctx.fillStyle = isMe ? 'rgba(56,225,255,0.22)' : 'rgba(10,8,30,0.55)';
   pill(hx - tw / 2, ty, tw, 19, 9.5);
   ctx.fill();
-  if (rk >= 0) drawRankChip(hx - tw / 2 + 11, ty + 9.5, RANKS[rk]);
+  if (dev) drawDevChip(hx - tw / 2 + 4, ty + 3);
+  else if (rk >= 0) drawRankChip(hx - tw / 2 + 11, ty + 9.5, RANKS[rk]);
   ctx.fillStyle = isMe ? '#bff4ff' : '#e9e6ff';
   ctx.fillText(label, hx + bw / 2, ty + 14);
+}
+function drawDevChip(x, y) {
+  const g = ctx.createLinearGradient(x, 0, x + 30, 0);
+  g.addColorStop(0, '#ff5fa2'); g.addColorStop(1, '#38e1ff');
+  ctx.fillStyle = g;
+  pill(x, y, 30, 13, 6.5); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '800 9px Nunito, sans-serif';
+  ctx.fillText('DEV', x + 15, y + 10);
+  ctx.font = '700 13px Nunito, sans-serif';
 }
 function drawRankChip(x, y, R) {
   ctx.beginPath();
@@ -1013,7 +1031,7 @@ function renderBoard() {
     const rows = collidables.filter(s => !s.dead).map(s => ({
       name: s === G.player ? save.name || 'Rookie' : s.name, score: Math.floor(s.mass), color: skinColors(s)[0],
       me: s === G.player, tag: s.isRemote ? '' : s.isBot && G.mode === 'online' ? 'bot' : '',
-      rk: s === G.player ? rankIndexFor(save.level) : (s.rk ?? -1),
+      rk: (s === G.player ? isDev : s.dev) ? -2 : s === G.player ? rankIndexFor(save.level) : (s.rk ?? -1),
     })).sort((a, b) => b.score - a.score);
     const top = rows.slice(0, 8);
     const meIdx = rows.findIndex(r => r.me);
@@ -1035,7 +1053,7 @@ function renderBoard() {
   }
 }
 function row(rank, name, score, color, me, tag = '', rk = null) {
-  return `<li class="${me ? 'me' : ''}"><span class="rk">${rank}</span><span class="dot" style="background:${color};--c:${color}"></span>${rk !== null && rk >= 0 ? badgeHTML(rk) : ''}<span class="nm">${esc(name)}${me ? ' <small>(you)</small>' : ''}${tag ? ` <small>${tag}</small>` : ''}</span><span class="sc">${Number(score).toLocaleString()}</span></li>`;
+  return `<li class="${me ? 'me' : ''}"><span class="rk">${rank}</span><span class="dot" style="background:${color};--c:${color}"></span>${rk !== null && (rk >= 0 || rk === -2) ? badgeHTML(rk) : ''}<span class="nm">${esc(name)}${me ? ' <small>(you)</small>' : ''}${tag ? ` <small>${tag}</small>` : ''}</span><span class="sc">${Number(score).toLocaleString()}</span></li>`;
 }
 
 function renderProfile() {
@@ -1052,7 +1070,7 @@ function renderProfile() {
   $('#soundBtn').classList.toggle('muted', !save.settings.sound);
   updateTeaser();
   const ri = rankIndexFor(save.level), next = RANKS[ri + 1];
-  $('#rankRow').innerHTML = `${badgeHTML(ri, 'mid')}<span class="rank-txt"><b>${rankName(ri)}</b><small>${next ? `Next: ${next.name} at level ${next.level}` : 'Top rank reached!'}</small></span>`;
+  $('#rankRow').innerHTML = isDev ? `${badgeHTML(-2, 'mid')}<span class="rank-txt"><b>Developer</b><small>Everything unlocked · hidden from all-time board</small></span>` : `${badgeHTML(ri, 'mid')}<span class="rank-txt"><b>${rankName(ri)}</b><small>${next ? `Next: ${next.name} at level ${next.level}` : 'Top rank reached!'}</small></span>`;
   $('.avatar-wrap').style.setProperty('--tier', ri >= 0 ? RANKS[ri].tier.color : '#9b7bff');
   drawAvatar();
   renderDaily();
@@ -1098,6 +1116,7 @@ function claimDaily() {
 
 /* ---------- ranks UI ---------- */
 function badgeHTML(ri, cls = '') {
+  if (ri === -2) return `<span class="rbadge dev ${cls}" title="Developer">DEV</span>`;
   if (ri < 0 || !RANKS[ri]) return `<span class="rbadge none ${cls}" title="Unranked">–</span>`;
   const R = RANKS[ri];
   return `<span class="rbadge ${cls}" style="--t:${R.tier.color};--d:${R.tier.dark}" title="${R.name}">${R.tier.name[0]}${R.div}</span>`;
@@ -1258,7 +1277,7 @@ function setNetStatus(state) {
 }
 function renderAccount(user) {
   const dot = $('#acctDot'), text = $('#acctText');
-  const hideAll = () => ['#acctActions', '#googleBtn', '#logoutBtn'].forEach(hide);
+  const hideAll = () => ['#acctActions', '#googleBtn', '#logoutBtn', '#copyIdBtn', '#devBtn'].forEach(hide);
   hideAll();
   if (!net) {
     dot.classList.remove('on');
@@ -1267,8 +1286,10 @@ function renderAccount(user) {
   }
   dot.classList.add('on');
   if (user && !user.anonymous) {
-    text.innerHTML = `Signed in as <b>${esc(user.email || user.name || 'your account')}</b><br><small>Progress syncs on every device.</small>`;
+    text.innerHTML = `Signed in as <b>${esc(user.email || user.name || 'your account')}</b>${isDev ? ' <span class="rbadge dev">DEV</span>' : ''}<br><small>Progress syncs on every device.</small>`;
     show('#logoutBtn');
+    show('#copyIdBtn');
+    $('#devBtn').classList.toggle('hidden', !isDev);
   } else {
     text.innerHTML = 'Playing as a guest.<br><small>Make a free account to keep your progress on any device.</small>';
     show('#acctActions');
@@ -1359,6 +1380,7 @@ async function logOut() {
   try { const { settings, updated, ...data } = save; await net.saveProfile(data); } catch {}
   const settings = save.settings;
   if (G.state === 'playing' || G.state === 'paused') { G.state = 'playing'; hide('#pauseOverlay'); killSnake(G.player, { quit: true }); }
+  isDev = false; devGod = false; document.body.classList.remove('is-dev');
   save = normalize({ settings, name: save.name });
   writeLocal();
   renderProfile();
@@ -1376,6 +1398,37 @@ function scheduleCloudSave() {
     net.saveProfile(data).catch(e => console.warn('cloud save failed', e));
   }, 1500);
 }
+/* ---------- developer mode ---------- */
+let isDev = false, devGod = false;
+function submitBest(name = save.name || 'Rookie') {
+  if (!net || isDev || save.best <= 0) return;
+  net.submitScore(name, save.best, save.skin, rankIndexFor(save.level)).then(() => { save.submittedBest = save.best; writeLocal(); }).catch(() => {});
+}
+async function refreshDev() {
+  const was = isDev;
+  isDev = net ? await net.checkDev() : false;
+  document.body.classList.toggle('is-dev', isDev);
+  if (!isDev) devGod = false;
+  if (isDev) {
+    save.ownedSkins = SKINS.map(s => s.id);
+    save.ownedEffects = EFFECTS.map(e => e.id);
+    save.coins = Math.max(save.coins, 999999);
+    if (save.level < 50) { save.level = 50; save.xp = 0; }
+    persist();
+    net.removeLeaderboardEntry().catch(() => {});
+    if (!was) toast('Dev mode on — everything unlocked');
+  }
+  renderAccount(net && net.user);
+  renderProfile();
+  return isDev;
+}
+function openDev() {
+  if (!isDev) return;
+  $('#devGod').checked = devGod;
+  $('#devLevel').value = save.level;
+  show('#devModal');
+}
+
 async function syncProfile(switched = false) {
   try {
     const cloud = await net.loadProfile();
@@ -1384,6 +1437,7 @@ async function syncProfile(switched = false) {
       writeLocal();
       renderProfile();
       if (save.name) hide('#nameModal');
+      await refreshDev();
       renderBoard();
       return;
     }
@@ -1409,7 +1463,8 @@ async function syncProfile(switched = false) {
       if (save.name) hide('#nameModal');
     }
     scheduleCloudSave();
-    if (save.best > 0) net.submitScore(save.name || 'Rookie', save.best, save.skin, rankIndexFor(save.level)).then(() => { save.submittedBest = save.best; writeLocal(); }).catch(() => {});
+    await refreshDev();
+    submitBest();
   } catch (e) { console.warn('Could not load cloud profile', e); }
 }
 
@@ -1492,7 +1547,7 @@ function bindEvents() {
     hide('#nameModal');
     sfx.click();
     toast(`Hi, ${n}!`);
-    if (net && save.best > 0) net.submitScore(n, save.best, save.skin, rankIndexFor(save.level)).catch(() => {});
+    submitBest(n);
   };
   $('#nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#saveName').click(); } });
   $('#nameModal').addEventListener('click', e => { if (e.target.id === 'nameModal' && save.name) hide('#nameModal'); });
@@ -1504,6 +1559,15 @@ function bindEvents() {
   $('#shakeToggle').onchange = e => { save.settings.shake = e.target.checked; persist(); };
 
   $('#signupBtn').onclick = () => openAuth('signup');
+  $('#copyIdBtn').onclick = async () => { try { await navigator.clipboard.writeText(net.uid); toast('Player ID copied'); } catch { prompt('Your player ID:', net.uid); } };
+  $('#devBtn').onclick = openDev;
+  $('#devClose').onclick = () => hide('#devModal');
+  $('#devModal').addEventListener('click', e => { if (e.target.id === 'devModal') hide('#devModal'); });
+  $('#devGod').onchange = e => { devGod = e.target.checked; toast(devGod ? 'Invincible on (solo only)' : 'Invincible off'); };
+  $('#devCoins').onclick = () => { save.coins += 10000; persist(); sfx.coin(); toast('+10,000 coins'); };
+  $('#devSetLevel').onclick = () => { const l = clamp(parseInt($('#devLevel').value, 10) || 1, 1, 999); save.level = l; save.xp = 0; persist(); toast(`Level set to ${l}`); };
+  $('#devGrow').onclick = () => { if (G.player && !G.player.dead && G.state !== 'menu') { G.player.mass += 250; toast('+250 size'); } else toast('Start a run first'); };
+  $('#devFood').onclick = () => { const c = G.player && !G.player.dead ? G.player : { x: G.cam.x, y: G.cam.y }; for (let i = 0; i < 120; i++) spawnFood(c.x + rand(-260, 260), c.y + rand(-260, 260), 3, { life: 30 }); toast('Snack time'); };
   $('#loginBtn').onclick = () => openAuth('login');
   $('#logoutBtn').onclick = logOut;
   $$('.auth-tab').forEach(b => { b.onclick = () => setAuthMode(b.dataset.mode); });
@@ -1545,6 +1609,7 @@ function bindEvents() {
       return;
     }
     if (e.key === 'Escape') {
+      if (!$('#devModal').classList.contains('hidden')) { hide('#devModal'); return; }
       if (!$('#authModal').classList.contains('hidden')) { hide('#authModal'); return; }
       if (!$('#rankModal').classList.contains('hidden')) { nextRankUp(); return; }
       if (!$('#shopModal').classList.contains('hidden')) { hide('#shopModal'); return; }
