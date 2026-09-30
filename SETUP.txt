@@ -1,0 +1,176 @@
+COIL — PUT YOUR GAME ONLINE (step by step, starting from zero)
+===============================================================
+
+What you'll end up with
+  • A public link like https://YOURNAME.github.io/coil-arena/ that anyone can
+    open on a computer or phone and play right away.
+  • Firebase as the backend: live online multiplayer, a worldwide leaderboard,
+    cloud-saved coins/skins, an "N players online" counter, and optional
+    "Save progress with Google" so progress follows people between devices.
+
+Both GitHub and Firebase are free for a game this size. Total time: ~20 min.
+Do the parts in order. The game already works offline, so you can test at
+any point with ./run-parrot.sh.
+
+
+PART 0 — TRY IT ON YOUR COMPUTER FIRST (2 min)
+----------------------------------------------
+Open a terminal in the "Snake Game" folder and run:
+
+   chmod +x run-parrot.sh publish-github.sh
+   ./run-parrot.sh
+
+Your browser opens http://127.0.0.1:8000/. Press Ctrl+C in the terminal to
+stop. (Double-clicking index.html also works for solo play, but online
+features only work through ./run-parrot.sh or your website link.)
+
+
+PART 1 — CREATE YOUR ACCOUNTS (5 min)
+-------------------------------------
+GitHub (hosts the game website):
+  1. Go to https://github.com/signup
+  2. Enter your email, a password and a username. Your username becomes part
+     of your game link (YOURNAME.github.io), so pick one you like.
+  3. Verify your email with the code GitHub sends you.
+
+Google / Firebase (the backend):
+  1. If you have a Gmail/Google account, you're done — Firebase uses it.
+  2. If not, create one at https://accounts.google.com/signup
+
+
+PART 2 — SET UP FIREBASE (10 min)
+---------------------------------
+A. Create the project
+  1. Go to https://console.firebase.google.com and sign in with Google.
+  2. Click "Create a project" (or "Get started by setting up a project").
+  3. Name it, e.g.  coil-arena  → Continue.
+  4. When asked about Gemini / Google Analytics, you can turn them off
+     (the game doesn't need them) → Create project → Continue.
+
+B. Turn on sign-in (gives every player an invisible ID)
+  1. Left menu: Build → Authentication → Get started.
+  2. "Sign-in method" tab → click "Anonymous" → switch Enable ON → Save.
+  3. Optional but recommended: "Add new provider" → "Google" → Enable,
+     pick your email as the support email → Save.
+     (This powers the "Save progress with Google" button.)
+
+C. Create the database
+  1. Left menu: Build → Realtime Database → Create Database.
+     (Make sure it's REALTIME Database, not Firestore.)
+  2. Pick a location close to your players → Next.
+  3. Choose "Start in locked mode" → Enable.
+  4. Open the "Rules" tab. Delete everything in the box, then open the file
+     database.rules.json from the game folder in a text editor, copy ALL of
+     it, paste it into the box, and click "Publish".
+
+D. Connect the game to Firebase
+  1. Click the gear icon (top left, next to "Project Overview")
+     → Project settings.
+  2. Scroll to "Your apps" → click the web icon  </>
+  3. App nickname: coil-web. Leave "Firebase Hosting" unchecked
+     → Register app.
+  4. Firebase shows a block of code with  const firebaseConfig = { ... }
+     You need these lines from it: apiKey, authDomain, databaseURL,
+     projectId, appId.
+  5. Open firebase-config.js from the game folder in a text editor and
+     replace the YOUR_... values with yours. It should look like:
+
+       window.firebaseConfig = {
+         apiKey: "AIzaSyB...",
+         authDomain: "coil-arena-1a2b3.firebaseapp.com",
+         databaseURL: "https://coil-arena-1a2b3-default-rtdb.firebaseio.com",
+         projectId: "coil-arena-1a2b3",
+         appId: "1:123456789:web:abc123"
+       };
+
+     If there is no databaseURL line in what Firebase showed you, copy the
+     link shown at the top of the Realtime Database → Data tab
+     (it starts with https:// and ends with firebaseio.com or
+     firebasedatabase.app).
+     Keep the first line exactly as  window.firebaseConfig = {
+     (don't paste Firebase's "import" or "initializeApp" lines).
+  6. Save the file. Run ./run-parrot.sh again — the top bar should now say
+     "1 online" with a green dot, and the "Online" mode becomes available.
+
+  Is it OK that these keys are public? Yes. Firebase web keys only say
+  which project to talk to. The rules you pasted in step C4 are what keep
+  data safe. Never put a "service account" or "Admin SDK" key in the game.
+
+
+PART 3 — PUBLISH ON GITHUB PAGES (5 min)
+----------------------------------------
+Easiest way — the included script does everything for you:
+
+  1. Install the tools once:
+
+       sudo apt update
+       sudo apt install git gh
+
+  2. In the game folder, run:
+
+       ./publish-github.sh
+
+  3. The first time, it asks you to log in to GitHub:
+       • "Where do you use GitHub?"  → GitHub.com
+       • It shows a one-time code and opens your browser. Paste the code,
+         click Authorize.
+  4. It creates a public repo called coil-arena, turns on GitHub Pages,
+     uploads the game, and prints your link:
+
+       https://YOURNAME.github.io/coil-arena/
+
+  5. Wait about a minute for the first build, then open the link.
+     Share it with anyone!
+
+  Want a different repo name?   ./publish-github.sh my-snake-game
+
+  If the link shows "404" after a few minutes: open your repo on GitHub →
+  Settings → Pages → under "Build and deployment" set Source to
+  "GitHub Actions". Then go to the Actions tab → "Deploy to GitHub Pages"
+  → "Run workflow".
+
+
+PART 4 — FINAL FIREBASE TOUCH (1 min, only if you enabled Google sign-in)
+------------------------------------------------------------------------
+  Firebase console → Authentication → Settings → Authorized domains
+  → Add domain → type  YOURNAME.github.io  (no https://, no /coil-arena/)
+  → Add.
+
+
+UPDATING THE GAME LATER
+-----------------------
+Edit any file, then run  ./publish-github.sh  again. The live site updates
+about a minute later. (Players may need to refresh the page.)
+
+
+HOW THE BACKEND IS ORGANIZED (for the curious)
+----------------------------------------------
+  rooms/arena-1/players/{id}   live snake positions (about 9 updates/sec)
+  rooms/arena-1/kills/{id}     "you knocked someone out" messages
+  leaderboard/{id}             each player's best score (only goes up)
+  profiles/{id}                cloud save: coins, level, skins, stats
+  presence/{id}                who has the game open right now
+
+Free plan limits (Spark): 100 people connected at the same time, 1 GB
+stored, 10 GB downloaded per month — plenty for friends and a small
+community. You can watch usage under Realtime Database → Usage.
+
+
+TROUBLESHOOTING
+---------------
+  Top bar says "Offline mode"      firebase-config.js still has YOUR_...
+                                   values, or the file wasn't saved.
+  Top bar says "Offline" (yellow)  Anonymous sign-in isn't enabled (Part 2B),
+                                   or databaseURL is wrong. Press F12 →
+                                   Console to see the exact error.
+  Leaderboard never loads          Rules weren't published (Part 2C step 4).
+  Google button says "turn on"     Enable Google in Authentication (Part 2B-3).
+  Google button: "authorized       Do Part 4.
+  domains"
+  "gh: command not found"          sudo apt install gh
+  Script says permission denied    chmod +x publish-github.sh
+
+A note on fairness: scores are sent by each player's browser, so a
+determined cheater could fake one. The rules block obviously silly values,
+which is fine for a fun community game. Don't attach real money or prizes
+to scores without a proper game server.

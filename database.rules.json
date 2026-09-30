@@ -1,0 +1,44 @@
+{
+  "rules": {
+    "rooms": {
+      "$room": {
+        "players": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.hasChildren(['n', 's', 'b', 't']) && newData.child('n').isString() && newData.child('n').val().length <= 16 && newData.child('s').isNumber() && newData.child('s').val() >= 0 && newData.child('s').val() <= 100000 && newData.child('t').isNumber()"
+          }
+        },
+        "kills": {
+          ".read": "auth != null",
+          ".indexOn": ["k"],
+          "$kill": {
+            ".write": "auth != null && ((!data.exists() && newData.child('v').val() === auth.uid) || (data.exists() && !newData.exists() && data.child('k').val() === auth.uid))",
+            ".validate": "newData.hasChildren(['k', 'v', 't']) && newData.child('k').isString() && newData.child('t').isNumber()"
+          }
+        }
+      }
+    },
+    "leaderboard": {
+      ".read": true,
+      ".indexOn": ["score"],
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['name', 'score', 't']) && newData.child('name').isString() && newData.child('name').val().length >= 1 && newData.child('name').val().length <= 16 && newData.child('score').isNumber() && newData.child('score').val() >= 0 && newData.child('score').val() <= 50000 && (!data.exists() || newData.child('score').val() >= data.child('score').val())"
+      }
+    },
+    "profiles": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "presence": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.isNumber()"
+      }
+    }
+  }
+}
