@@ -30,7 +30,7 @@ function rgba(hex, a) {
    content
    ========================================================= */
 const SK = window.coilSkins;
-const SKINS = SK.SHOP.slice();
+const SKINS = SK.SHOP.slice().concat(SK.EXCLUSIVE);
 const EFFECTS = [
   { id: 'spark', tag: 'Quick and clean.',  name: 'Spark', icon: '✦', color: '#38e1ff', colors: ['#38e1ff', '#ffffff'], n: 18, cost: 0, rarity: 'starter' },
   { id: 'bloom', tag: 'Flowers for your rivals.',  name: 'Bloom', icon: '✿', color: '#ff5fa2', colors: ['#ff5fa2', '#ffb3d9', '#b6ff5c'], n: 24, cost: 180, rarity: 'common' },
@@ -96,8 +96,10 @@ const freshSave = () => ({
   coins: 0, xp: 0, level: 1, best: 0, kills: 0, runs: 0, name: '',
   skin: 'aurora', effect: 'spark', ownedSkins: ['aurora'], ownedEffects: ['spark'],
   daily: '', streak: 0, history: [], submittedBest: 0,
+  stats: {}, ach: {}, title: '', weekBest: { w: '', s: 0 }, fc: '', weeklyClaims: [],
   settings: { sound: true, sensitivity: 1, shake: true }, updated: 0,
 });
+const STAT_KEYS = ['orbs', 'bigOrbs', 'time', 'maxSize', 'shrinkWins', 'onlineRuns', 'onlineKos', 'weeklyTop', 'friends'];
 function normalize(raw) {
   raw = raw && typeof raw === 'object' ? raw : {};
   const s = { ...freshSave(), ...raw };
@@ -111,6 +113,14 @@ function normalize(raw) {
   for (const k of ['coins', 'xp', 'level', 'best', 'kills', 'runs', 'streak', 'submittedBest']) s[k] = Math.max(k === 'level' ? 1 : 0, Math.floor(Number(s[k]) || 0));
   s.history = (Array.isArray(s.history) ? s.history : Object.values(s.history || {})).filter(h => h && typeof h.score === 'number').slice(0, 5);
   s.name = String(s.name || '').slice(0, 16);
+  const st = raw.stats && typeof raw.stats === 'object' ? raw.stats : {};
+  s.stats = {};
+  for (const k of STAT_KEYS) s.stats[k] = Math.max(0, Math.floor(Number(st[k]) || 0));
+  s.ach = raw.ach && typeof raw.ach === 'object' ? { ...raw.ach } : {};
+  s.title = typeof s.title === 'string' ? s.title.slice(0, 24) : '';
+  s.weekBest = raw.weekBest && typeof raw.weekBest === 'object' ? { w: String(raw.weekBest.w || ''), s: Math.max(0, Number(raw.weekBest.s) || 0) } : { w: '', s: 0 };
+  s.fc = /^[A-Z0-9]{6}$/.test(s.fc || '') ? s.fc : '';
+  s.weeklyClaims = (Array.isArray(s.weeklyClaims) ? s.weeklyClaims : Object.values(s.weeklyClaims || {})).map(String).slice(-10);
   s.settings.sensitivity = clamp(Number(s.settings.sensitivity) || 1, 0.6, 1.6);
   return s;
 }
@@ -124,6 +134,7 @@ function persist() {
   writeLocal();
   renderProfile();
   scheduleCloudSave();
+  savePublicSoon();
 }
 
 /* =========================================================
@@ -185,7 +196,9 @@ const BOOST_SPEED = 310;
 const START_MASS = 10;
 const MAX_POINTS = 720;
 const FOOD_TARGET = 560;
-const BOTS = { solo: 12, online: 6 };
+const BOTS = { solo: 12, shrink: 14, online: 4 };
+const N_SLOTS = 520;                 // shared food slots in online rooms
+const SHRINK = { end: 210, delay: 10, dur: 150 };
 const ROOM = 'arena-1';
 const radiusFor = m => 10 + Math.min(16, Math.sqrt(m) * 0.75);
 const pointsFor = m => Math.min(MAX_POINTS, Math.floor(18 + m * 1.15));
@@ -205,6 +218,7 @@ const G = {
   time: 0, runTime: 0, runKos: 0, bestRank: 99, combo: 0, lastEatAt: 0,
   dyingT: 0, deathInfo: null, menuFollow: null, menuSwitch: 0,
   globalRows: null, onlineCount: 0,
+  arenaR: ARENA_R, room: null, roomSeed: 0, slotGen: null, slotFood: null, drops: new Map(), feed: [], botCheckAt: 0, sweepAt: 0,
   desired: 0,
 };
 let nextId = 1;
@@ -222,7 +236,7 @@ function makeSnake({ x, y, name, skin, isBot = false, mass = START_MASS, angle =
 const skinColors = s => skinById(s.skin).colors;
 
 function randomPointInArena(margin = 40) {
-  const a = rand(0, TAU), d = Math.sqrt(Math.random()) * (ARENA_R - margin);
+  const a = rand(0, TAU), d = Math.sqrt(Math.random()) * Math.max(60, G.arenaR - margin);
   return { x: Math.cos(a) * d, y: Math.sin(a) * d };
 }
 function safeSpot(minDist = 350, avoid = null) {
@@ -257,12 +271,91 @@ function spawnFood(x, y, value = 1, opts = {}) {
   });
 }
 
+/* ---------- shared world (online rooms) ---------- */
+function hashStr(s) { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function mulberry(seed) { let x = seed | 0; return () => { x = (x + 0x6D2B79F5) | 0; let t = Math.imul(x ^ (x >>> 15), 1 | x); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function slotSpec(i, g) {
+  const r = mulberry(G.roomSeed ^ Math.imul(i + 1, 2654435761) ^ Math.imul(g + 7, 40503));
+  const a = r() * TAU, d = Math.sqrt(r()) * (ARENA_R - 40), big = r() < 0.035;
+  return { x: Math.cos(a) * d, y: Math.sin(a) * d, big, value: big ? 5 : 1, color: FOOD_COLORS[(r() * FOOD_COLORS.length) | 0], r: big ? 9 : 3.6 + r() * 1.8 };
+}
+function placeSlot(i, g) {
+  const old = G.slotFood[i];
+  if (old) old.gone = true;
+  const f = { ...slotSpec(i, g), ph: rand(0, TAU), life: 0, max: 0, vx: 0, vy: 0, slot: i, gen: g };
+  G.slotFood[i] = f;
+  G.slotGen[i] = g;
+  G.foods.push(f);
+}
+function enterWorld(room) {
+  G.room = room;
+  G.roomSeed = hashStr(room);
+  G.foods = [];
+  G.remote = {};
+  G.drops = new Map();
+  G.slotGen = new Int32Array(N_SLOTS);
+  G.slotFood = new Array(N_SLOTS);
+  for (let i = 0; i < N_SLOTS; i++) placeSlot(i, 0);
+  net.joinRoom(room, {
+    onPlayers: onRemotePlayers,
+    onKill: v => { awardKO(v.n || 'a player', G.player ? G.player.x : G.cam.x, G.player ? G.player.y : G.cam.y, true); },
+    onFood: (slot, gen) => { if (slot >= 0 && slot < N_SLOTS && gen > G.slotGen[slot]) placeSlot(slot, gen); },
+    onDrop: onDrop,
+    onDropChange: (id, v) => { const e = (v && v.e) || {}; for (const f of G.foods) if (f.drop === id && e[f.k]) f.gone = true; },
+    onDropRemoved: id => { for (const f of G.foods) if (f.drop === id) f.gone = true; G.drops.delete(id); },
+  });
+  net.setWhere(room);
+  savePublicSoon();
+}
+function leaveWorld() {
+  if (net) { net.leaveRoom(); net.setWhere(null); }
+  G.remote = {};
+  G.drops = new Map();
+  G.slotGen = G.slotFood = null;
+  G.foods = [];
+  G.room = null;
+  savePublicSoon();
+}
+function onDrop(id, v) {
+  if (!v || G.drops.has(id) || !Array.isArray(v.p)) return;
+  const age = net.now() - (v.t || net.now());
+  if (age > 40000) { G.drops.set(id, { t: v.t || 0 }); return; }
+  G.drops.set(id, { t: v.t || net.now() });
+  const cols = skinById(v.c).colors, e = v.e || {};
+  const life = Math.max(3, 40 - age / 1000);
+  for (let k = 0; k * 2 + 1 < v.p.length; k++) {
+    if (e[k]) continue;
+    G.foods.push({ x: +v.p[k * 2] || 0, y: +v.p[k * 2 + 1] || 0, value: v.v, big: false, r: 5 + Math.min(v.v, 6), color: cols[k % cols.length], ph: rand(0, TAU), life, max: life, vx: 0, vy: 0, drop: id, k });
+  }
+  if (v.u !== (net && net.uid) && age < 6000) {
+    const who = esc(v.n || 'Someone');
+    addFeed(v.by ? `<b>${esc(v.by)}</b> <i>took out</i> <b>${who}</b>` : `<b>${who}</b> <i>${v.w ? 'bonked the wall' : 'got coiled'}</i>`);
+  }
+}
+
+/* ---------- kill feed ---------- */
+function addFeed(html) {
+  G.feed.unshift({ html, t: performance.now() });
+  if (G.feed.length > 5) G.feed.length = 5;
+  renderFeed();
+}
+function renderFeed() {
+  const now = performance.now();
+  G.feed = G.feed.filter(f => now - f.t < 6500);
+  $('#killFeed').innerHTML = G.feed.map(f => `<li style="opacity:${Math.min(1, (6500 - (now - f.t)) / 900).toFixed(2)}">${f.html}</li>`).join('');
+}
+function feedName(s) {
+  if (!s) return '';
+  const me = s === G.player;
+  return `<b style="color:${skinColors(s)[0]}">${esc(me ? (save.name || 'You') : s.name)}</b>`;
+}
+
 function spawnBot(awayFrom = null) {
   const p = safeSpot(300, awayFrom);
   const boss = Math.random() < 0.12;
   const used = new Set(G.snakes.map(s => s.name));
   const name = pick(BOT_NAMES.filter(n => !used.has(n))) || pick(BOT_NAMES);
-  const b = makeSnake({ x: p.x, y: p.y, name, skin: pick(SKINS.filter(k => !k.rank && k.rank !== 0)).id, isBot: true, mass: boss ? rand(80, 160) | 0 : rand(10, 45) | 0 });
+  const b = makeSnake({ x: p.x, y: p.y, name, skin: pick(SKINS.filter(k => k.rarity !== 'rank' && k.rarity !== 'exclusive')).id, isBot: true, mass: boss ? rand(80, 160) | 0 : rand(10, 45) | 0 });
   if (boss) b.skill = rand(0.75, 1);
   b.rk = boss ? (rand(6, 15) | 0) : (rand(-1, 9) | 0);
   G.snakes.push(b);
@@ -270,8 +363,8 @@ function spawnBot(awayFrom = null) {
 }
 
 function fillWorld() {
-  while (G.foods.length < FOOD_TARGET) spawnFood();
-  const want = BOTS[G.mode];
+  if (G.mode !== 'online') while (G.foods.length < FOOD_TARGET) spawnFood();
+  const want = G.mode === 'online' ? clamp(BOTS.online - Object.keys(G.remote).length, 0, BOTS.online) : BOTS[G.mode];
   let bots = G.snakes.filter(s => s.isBot);
   while (bots.length > want) { const b = bots.pop(); G.snakes.splice(G.snakes.indexOf(b), 1); }
   for (let i = bots.length; i < want; i++) spawnBot(G.player);
@@ -296,8 +389,10 @@ function updateBoost(s, want, dt) {
     if (s.dropT > 0.3 && s.mass > START_MASS + 2) {
       s.dropT = 0;
       s.mass -= 1;
+      if (G.mode !== 'online') {
       const t = s.pts[s.pts.length - 1];
       spawnFood(t.x + rand(-4, 4), t.y + rand(-4, 4), 1, { color: skinColors(s)[0], r: 4.4, life: 14, big: false });
+      }
     }
   } else {
     s.boosting = false;
@@ -329,7 +424,7 @@ function moveSnake(s, dt) {
 }
 
 function checkCollision(s) {
-  if (s.x * s.x + s.y * s.y > (ARENA_R - s.r * 0.5) ** 2) return { wall: true };
+  if (s.x * s.x + s.y * s.y > (G.arenaR - s.r * 0.5) ** 2) return { wall: true };
   for (const o of collidables) {
     if (o === s || o.dead) continue;
     const pad = o.r + s.r;
@@ -350,15 +445,27 @@ function killSnake(s, cause) {
   s.dead = true;
   s.boosting = false;
   const cols = skinColors(s);
-  const count = clamp(Math.round(s.mass * 0.4), 6, 160);
-  const value = Math.max(1, Math.round((s.mass * 0.8) / count));
-  for (let k = 0; k < count; k++) {
-    const p = s.pts[Math.floor((k / count) * s.pts.length)];
-    spawnFood(p.x + rand(-10, 10), p.y + rand(-10, 10), value, { color: cols[k % cols.length], life: rand(18, 26), big: false });
+  const shared = G.mode === 'online' && net && G.room && s === G.player && !cause.quit;
+  const count = clamp(Math.round(s.mass * 0.4), 6, shared ? 80 : 160);
+  const value = clamp(Math.round((s.mass * 0.8) / count), 1, 20);
+  if (shared) {
+    const p = [];
+    for (let k = 0; k < count; k++) { const q = s.pts[Math.floor((k / count) * s.pts.length)]; p.push(Math.round(q.x + rand(-10, 10)), Math.round(q.y + rand(-10, 10))); }
+    net.pushDrop({ p, v: value, c: s.skin, n: save.name || 'Rookie', by: cause.by ? String(cause.by.name || '').slice(0, 16) : '', w: cause.wall ? 1 : 0 });
+  } else {
+    for (let k = 0; k < count; k++) {
+      const p = s.pts[Math.floor((k / count) * s.pts.length)];
+      spawnFood(p.x + rand(-10, 10), p.y + rand(-10, 10), value, { color: cols[k % cols.length], life: rand(18, 26), big: false });
+    }
+  }
+  if (!cause.quit && !cause.win) {
+    if (cause.by) addFeed(`${feedName(cause.by)} <i>took out</i> ${feedName(s)}`);
+    else if (cause.wall) addFeed(`${feedName(s)} <i>${G.mode === 'shrink' ? 'got caught by the zone' : 'bonked the wall'}</i>`);
   }
   burst(s.x, s.y, s === G.player || cause.by === G.player ? effectById(save.effect) : { colors: cols, n: 14 });
   if (s === G.player) { playerDied(cause); return; }
   s.respawnAt = G.time + rand(2.5, 5);
+  if (G.mode === 'shrink' && G.state === 'playing') s.respawnAt = Infinity;
   if (cause.by === G.player && G.state === 'playing') awardKO(s.name, s.x, s.y);
 }
 
@@ -370,7 +477,7 @@ function rayDanger(b, ang, look) {
     const dist = (look * k) / 3;
     const px = b.x + c * dist, py = b.y + sn * dist;
     const w = 1.2 - k * 0.2;
-    if (px * px + py * py > (ARENA_R - b.r * 2) ** 2) { worst = Math.max(worst, w); continue; }
+    if (px * px + py * py > (G.arenaR - b.r * 2) ** 2) { worst = Math.max(worst, w); continue; }
     for (const o of collidables) {
       if (o === b || o.dead) continue;
       const pad = o.r + b.r + 8;
@@ -409,7 +516,7 @@ function botThink(b, dt) {
         b.aggro = 1;
       }
     }
-    if (Math.hypot(b.x, b.y) > ARENA_R - 280) desired = Math.atan2(-b.y, -b.x) + rand(-0.5, 0.5);
+    if (Math.hypot(b.x, b.y) > G.arenaR - Math.min(280, G.arenaR * 0.35)) desired = Math.atan2(-b.y, -b.x) + rand(-0.5, 0.5);
 
     const smart = Math.random() < 0.55 + b.skill * 0.45;
     b.target = desired;
@@ -463,10 +570,15 @@ function eatFood(s, dt) {
     if (d2 > reach2) continue;
     const d = Math.sqrt(d2);
     if (d < eatR + f.r * 0.5) {
+      if (f.gone) continue;
       foods[i] = foods[foods.length - 1];
       foods.pop();
       s.mass += f.value;
-      if (s === G.player) onPlayerEat(f);
+      if (s === G.player) {
+        if (f.slot !== undefined && net) { net.eatFood(f.slot, f.gen); placeSlot(f.slot, f.gen + 1); }
+        else if (f.drop && net) net.eatDrop(f.drop, f.k);
+        onPlayerEat(f);
+      }
     } else {
       const pull = Math.min(d, (260 + s.r * 4) * dt);
       f.x -= (dx / d) * pull; f.y -= (dy / d) * pull;
@@ -474,6 +586,9 @@ function eatFood(s, dt) {
   }
 }
 function onPlayerEat(f) {
+  save.stats.orbs++;
+  if (f.big) save.stats.bigOrbs++;
+  if (G.player && G.player.mass > G.runMax) G.runMax = Math.floor(G.player.mass);
   G.combo = G.time - G.lastEatAt < 0.7 ? G.combo + 1 : 0;
   G.lastEatAt = G.time;
   if (f.big) { sfx.big(); floatText(f.x, f.y, `+${f.value}`, f.color); }
@@ -504,6 +619,12 @@ function startRunInner() {
   sfx.click();
   if (G.mode === 'online' && !net) { toast('Online needs Firebase set up — playing solo'); setMode('solo'); }
   if (G.player) { const i = G.snakes.indexOf(G.player); if (i >= 0) G.snakes.splice(i, 1); }
+  if (G.mode === 'shrink') {
+    G.snakes = G.snakes.filter(s => !s.isBot);
+    G.foods = [];
+    G.arenaR = ARENA_R;
+  }
+  if (G.mode === 'online' && net && net.room !== G.room) enterWorld(G.room || ROOM);
   fillWorld();
   collidables = G.snakes.filter(s => !s.dead).concat(Object.values(G.remote));
   const p = safeSpot(420);
@@ -511,20 +632,18 @@ function startRunInner() {
   G.player.isPlayer = true;
   G.desired = G.player.angle;
   G.snakes.push(G.player);
-  Object.assign(G, { state: 'playing', runTime: 0, runKos: 0, bestRank: 99, combo: 0, deathInfo: null });
+  Object.assign(G, { state: 'playing', runTime: 0, runKos: 0, bestRank: 99, combo: 0, deathInfo: null, runMax: START_MASS });
   input.boostKey = input.boostMouse = input.boostTouch = false;
-  if (G.mode === 'online' && net) {
-    net.joinRoom(ROOM, { onPlayers: onRemotePlayers, onKill: v => awardKO(v.n || 'a player', G.player.x, G.player.y, true) });
-  }
   hide('#startOverlay'); hide('#deathCard'); hide('#pauseOverlay');
-  $('#pauseBtn').classList.toggle('hidden', G.mode !== 'solo');
+  $('#pauseBtn').classList.toggle('hidden', G.mode === 'online');
+  if (G.mode === 'shrink') toast('The zone closes in 10 seconds — be the last snake!');
   if (innerWidth < 820) $('#frame').scrollIntoView({ block: 'end', behavior: 'smooth' });
-  toast(G.mode === 'online' ? 'You\'re live — good luck!' : 'Go get \'em!');
+  if (G.mode !== 'shrink') toast(G.mode === 'online' ? 'You\'re live — good luck!' : 'Go get \'em!');
   syncFrameState();
 }
 function pause() {
   if (G.state !== 'playing') return;
-  if (G.mode !== 'solo') { toast('Online runs can\'t be paused'); return; }
+  if (G.mode === 'online') { toast('Online runs can\'t be paused'); return; }
   G.state = 'paused';
   $('#soundToggle').checked = save.settings.sound;
   $('#sensitivity').value = save.settings.sensitivity;
@@ -536,7 +655,7 @@ function resume() {
   if (G.state !== 'paused') return;
   G.state = 'playing';
   hide('#pauseOverlay');
-  $('#pauseBtn').classList.toggle('hidden', G.mode !== 'solo');
+  $('#pauseBtn').classList.toggle('hidden', G.mode === 'online');
   syncFrameState();
 }
 function toMenu() {
@@ -548,19 +667,22 @@ function toMenu() {
 
 function playerDied(cause) {
   const p = G.player;
+  const win = !!cause.win;
   G.state = 'dying';
-  G.dyingT = cause.quit ? 0.15 : 1.2;
-  if (!cause.quit) { shake(22); sfx.die(); navigator.vibrate?.(140); }
+  G.dyingT = cause.quit ? 0.15 : win ? 1.6 : 1.2;
+  if (win) { sfx.level(); burst(p.x, p.y, effectById(save.effect)); burstConfettiWorld(p.x, p.y); }
+  else if (!cause.quit) { shake(22); sfx.die(); navigator.vibrate?.(140); }
   const by = cause.by;
   if (net && G.mode === 'online') {
-    if (by && by.isRemote) net.reportKill(by.uid, save.name || 'Rookie');
-    net.leaveRoom();
-    G.remote = {};
+    if (by && by.isRemote) net.reportKill(by.uid, save.name || 'Rookie', by.name);
+    net.removeMe();
   }
+  const placement = G.mode === 'shrink' ? 1 + G.snakes.filter(s => s.isBot && !s.dead).length : 0;
   const score = Math.floor(p.mass);
   const newBest = score > save.best;
-  const coins = Math.max(5, Math.floor(score / 6) + Math.floor(G.runTime / 15));
-  const xp = Math.floor(score * 0.35 + G.runTime / 4 + G.runKos * 20) + 5;
+  const coins = Math.max(5, Math.floor(score / 6) + Math.floor(G.runTime / 15)) + (win ? 150 : 0);
+  const xp = Math.floor(score * 0.35 + G.runTime / 4 + G.runKos * 20) + 5 + (win ? 120 : 0);
+  recordRunStats({ score, win, time: G.runTime, mode: G.mode });
   save.best = Math.max(save.best, score);
   save.runs++;
   save.coins += coins;
@@ -571,9 +693,9 @@ function playerDied(cause) {
     submitBest();
   }
   G.deathInfo = {
-    title: cause.quit ? 'Run ended' : newBest && score > 20 ? 'New record!' : pick(DEATH_TITLES),
-    by: cause.quit ? 'You wrapped things up early.' : cause.wall ? 'You bonked into the arena wall.' : by ? `You ran into ${by.name}${by.isBot && G.mode === 'online' ? ' (bot)' : ''}.` : 'You got coiled.',
-    score, newBest: newBest && score > 0, kos: G.runKos, time: G.runTime, rank: G.bestRank, coins, xp,
+    title: win ? 'Victory!' : cause.quit ? 'Run ended' : newBest && score > 20 ? 'New record!' : pick(DEATH_TITLES),
+    by: win ? 'Last snake standing — you won the Shrink battle! +150 bonus coins' : cause.quit ? 'You wrapped things up early.' : cause.wall ? (G.mode === 'shrink' ? 'The zone got you.' : 'You bonked into the arena wall.') : by ? `You ran into ${by.name}${by.isBot && G.mode === 'online' ? ' (bot)' : ''}.` : 'You got coiled.',
+    score, newBest: newBest && score > 0, kos: G.runKos, time: G.runTime, rank: G.mode === 'shrink' ? placement : G.bestRank, rankLabel: G.mode === 'shrink' ? 'Placed' : 'Top rank', coins, xp, win,
   };
 }
 function showDeath() {
@@ -587,6 +709,9 @@ function showDeath() {
   const t = Math.floor(d.time);
   $('#finalTime').textContent = t >= 60 ? `${Math.floor(t / 60)}m ${t % 60}s` : `${t}s`;
   $('#finalRank').textContent = d.rank < 99 ? `#${d.rank}` : '—';
+  $('#finalRankLabel').textContent = d.rankLabel || 'Top rank';
+  $('#deathCard').classList.toggle('victory', !!d.win);
+  $('#deathKicker span').textContent = d.win ? 'Victory' : 'Run over';
   $('#runReward').textContent = d.coins;
   const goal = SKINS.filter(s => s.cost > 0 && s.rarity !== 'rank' && !save.ownedSkins.includes(s.id)).sort((x, y) => x.cost - y.cost);
   const afford = goal.filter(s => s.cost <= save.coins).pop();
@@ -603,6 +728,7 @@ function showDeath() {
 }
 function awardKO(name, x, y, remote = false) {
   G.runKos++;
+  if (remote) save.stats.onlineKos++;
   save.kills++;
   save.coins += 15;
   persist();
@@ -712,7 +838,7 @@ function update(dt) {
     G.desired = playerDesired(p);
     steer(p, G.desired, dt);
     updateBoost(p, input.boostKey || input.boostMouse || input.boostTouch, dt);
-    if (isDev && devGod && G.mode === 'solo') p.energy = 100;
+    if (isDev && devGod && G.mode !== 'online') p.energy = 100;
   }
   for (const s of G.snakes) if (s.isBot && !s.dead) botThink(s, dt);
   for (const s of G.snakes) if (!s.dead) moveSnake(s, dt);
@@ -722,30 +848,43 @@ function update(dt) {
     if (s.dead) continue;
     if (s === p && G.state !== 'playing') continue;
     const hit = checkCollision(s);
-    if (hit && s === p && isDev && devGod && G.mode === 'solo') {
-      if (hit.wall) { const d = Math.hypot(s.x, s.y) || 1, m = (ARENA_R - s.r * 2) / d; if (m < 1) { s.x *= m; s.y *= m; } s.angle = Math.atan2(-s.y, -s.x); }
+    if (hit && s === p && isDev && devGod && G.mode !== 'online') {
+      if (hit.wall) { const d = Math.hypot(s.x, s.y) || 1, m = (G.arenaR - s.r * 2) / d; if (m < 1) { s.x *= m; s.y *= m; } s.angle = Math.atan2(-s.y, -s.x); }
       continue;
     }
     if (hit) killSnake(s, hit);
   }
-  for (const s of G.snakes) if (!s.dead) eatFood(s, dt);
+  for (const s of G.snakes) if (!s.dead && !(s.isBot && G.mode === 'online')) eatFood(s, dt);
 
   // food upkeep
   const foods = G.foods;
   for (let i = foods.length - 1; i >= 0; i--) {
     const f = foods[i];
+    if (f.gone || (G.mode === 'shrink' && f.x * f.x + f.y * f.y > G.arenaR * G.arenaR)) { foods[i] = foods[foods.length - 1]; foods.pop(); continue; }
     if (f.max) {
       f.life -= dt;
       if (f.life <= 0) { foods[i] = foods[foods.length - 1]; foods.pop(); continue; }
     }
     if (f.vx || f.vy) { f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= 0.94; f.vy *= 0.94; }
   }
-  for (let i = 0; i < 6 && foods.length < FOOD_TARGET; i++) spawnFood();
+  if (G.mode !== 'online') for (let i = 0; i < 6 && foods.length < FOOD_TARGET * (G.mode === 'shrink' ? Math.max(0.25, (G.arenaR / ARENA_R) ** 2) : 1); i++) spawnFood();
+  if (G.mode === 'online' && net && G.room && G.time > G.sweepAt) {
+    G.sweepAt = G.time + 10;
+    for (const [id, d] of G.drops) if (net.now() - d.t > 45000) { net.removeDrop(id); G.drops.delete(id); }
+  }
+  if (G.mode === 'online' && G.time > G.botCheckAt) { G.botCheckAt = G.time + 2; fillWorld(); }
+
+  // shrinking arena
+  if (G.mode === 'shrink' && (G.state === 'playing' || G.state === 'dying') && G.player) {
+    const el = Math.max(0, G.runTime - SHRINK.delay);
+    G.arenaR = Math.max(SHRINK.end, ARENA_R - (el / SHRINK.dur) * (ARENA_R - SHRINK.end));
+    if (G.state === 'playing' && G.runTime > 2 && !G.snakes.some(s => s.isBot && !s.dead)) playerDied({ win: true });
+  } else if (G.arenaR < ARENA_R) G.arenaR = Math.min(ARENA_R, G.arenaR + dt * 600);
 
   // bot respawns
   for (let i = G.snakes.length - 1; i >= 0; i--) {
     const s = G.snakes[i];
-    if (s.isBot && s.dead && G.time > s.respawnAt) { G.snakes.splice(i, 1); spawnBot(G.player && !G.player.dead ? G.player : null); }
+    if (s.isBot && s.dead && G.time > s.respawnAt && !(G.mode === 'shrink' && (G.state === 'playing' || G.state === 'dying'))) { G.snakes.splice(i, 1); spawnBot(G.player && !G.player.dead ? G.player : null); }
   }
 
   for (const q of G.particles) { q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.95; q.vy *= 0.95; }
@@ -758,7 +897,7 @@ function update(dt) {
   for (const t of G.texts) { t.life -= dt; t.y -= 40 * dt; }
   G.texts = G.texts.filter(t => t.life > 0);
 
-  if (playing && G.mode === 'online' && net && performance.now() - publishAt > 110) { publishAt = performance.now(); publishPlayer(); }
+  if (G.state === 'playing' && p && !p.dead && G.mode === 'online' && net && performance.now() - publishAt > 110) { publishAt = performance.now(); publishPlayer(); }
   if (G.state === 'dying') { G.dyingT -= dt; if (G.dyingT <= 0) showDeath(); }
   updateCamera(dt);
 }
@@ -861,10 +1000,15 @@ function render() {
   ctx.beginPath(); ctx.arc(0, 0, ARENA_R, 0, TAU);
   ctx.fillStyle = floorGrad; ctx.fill();
   ctx.fillStyle = floorPattern; ctx.fill();
+  if (G.arenaR < ARENA_R - 1) {
+    ctx.beginPath(); ctx.arc(0, 0, ARENA_R + 400, 0, TAU); ctx.arc(0, 0, G.arenaR, 0, TAU, true);
+    ctx.fillStyle = `rgba(255,50,90,${0.16 + 0.05 * Math.sin(G.time * 4)})`; ctx.fill();
+  }
+  ctx.beginPath(); ctx.arc(0, 0, G.arenaR, 0, TAU);
 
   // glowing border (brighter when the player is close)
   let near = 0;
-  if (G.player && !G.player.dead) near = clamp(1 - (ARENA_R - Math.hypot(G.player.x, G.player.y)) / 260, 0, 1);
+  if (G.player && !G.player.dead) near = clamp(1 - (G.arenaR - Math.hypot(G.player.x, G.player.y)) / 260, 0, 1);
   const pulse = near ? 0.5 + Math.sin(G.time * 10) * 0.5 * near : 0;
   ctx.lineWidth = 34; ctx.strokeStyle = `rgba(255,95,162,${0.07 + pulse * 0.12})`; ctx.stroke();
   ctx.lineWidth = 12; ctx.strokeStyle = `rgba(255,95,162,${0.16 + pulse * 0.2})`; ctx.stroke();
@@ -975,6 +1119,7 @@ function animatePreviews(t, dt) {
   const scopes = [];
   if (!$('#shopModal').classList.contains('hidden')) scopes.push($('#shopModal'));
   if (!$('#rankModal').classList.contains('hidden')) scopes.push($('#rankModal'));
+  if (!$('#profileModal').classList.contains('hidden')) scopes.push($('#profileModal'));
   scopes.push($('.shop-card'));
   if (!$('#deathCard').classList.contains('hidden')) scopes.push($('#deathCard'));
   for (const scope of scopes) {
@@ -996,6 +1141,7 @@ function renderMinimap() {
   mctx.fillStyle = 'rgba(13,11,36,0.72)';
   mctx.beginPath(); mctx.arc(c, c, S / 2 - 2, 0, TAU); mctx.fill();
   mctx.strokeStyle = 'rgba(255,95,162,0.7)'; mctx.lineWidth = 3; mctx.stroke();
+  if (G.arenaR < ARENA_R - 1) { mctx.strokeStyle = '#ff3b5c'; mctx.lineWidth = 2.5; mctx.beginPath(); mctx.arc(c, c, G.arenaR * k, 0, TAU); mctx.stroke(); }
   const dot = (x, y, r, col) => { mctx.fillStyle = col; mctx.beginPath(); mctx.arc(c + x * k, c + y * k, r, 0, TAU); mctx.fill(); };
   for (const s of G.snakes) if (!s.dead && s !== G.player) dot(s.x, s.y, 3 + Math.min(5, s.mass / 60), skinColors(s)[0]);
   for (const r of Object.values(G.remote)) dot(r.x, r.y, 5, '#ff5fa2');
@@ -1021,6 +1167,13 @@ function hud(now) {
     if (G.state === 'playing' && G.runTime > 1) G.bestRank = Math.min(G.bestRank, rank);
   }
   $('#boostBtn').classList.toggle('on', !!(p && p.boosting));
+  const zc = $('#zoneChip');
+  if (G.mode === 'shrink' && G.state === 'playing') {
+    const left = Math.max(0, SHRINK.delay + SHRINK.dur - G.runTime);
+    zc.classList.remove('hidden');
+    zc.innerHTML = G.runTime < SHRINK.delay ? `Zone in <b>${Math.ceil(SHRINK.delay - G.runTime)}s</b>` : left > 0 ? `Zone <b>${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}</b>` : '<b>Final zone!</b>';
+  } else zc.classList.add('hidden');
+  if (G.feed.length) renderFeed();
   if (now - boardAt > 500) { boardAt = now; if (boardTab === 'arena') renderBoard(); }
 }
 
@@ -1030,18 +1183,25 @@ function renderBoard() {
   if (boardTab === 'arena') {
     const rows = collidables.filter(s => !s.dead).map(s => ({
       name: s === G.player ? save.name || 'Rookie' : s.name, score: Math.floor(s.mass), color: skinColors(s)[0],
-      me: s === G.player, tag: s.isRemote ? '' : s.isBot && G.mode === 'online' ? 'bot' : '',
+      me: s === G.player, tag: s.isRemote ? '' : s.isBot && G.mode === 'online' ? 'bot' : '', uid: s === G.player ? (net && net.uid) : s.isRemote ? s.uid : '',
       rk: (s === G.player ? isDev : s.dev) ? -2 : s === G.player ? rankIndexFor(save.level) : (s.rk ?? -1),
     })).sort((a, b) => b.score - a.score);
     const top = rows.slice(0, 8);
     const meIdx = rows.findIndex(r => r.me);
     if (meIdx >= 8) top[7] = { ...rows[meIdx], rank: meIdx + 1 };
-    el.innerHTML = top.map((r, i) => row(r.rank || i + 1, r.name, r.score, r.color, r.me, r.tag, r.rk)).join('');
+    el.innerHTML = top.map((r, i) => row(r.rank || i + 1, r.name, r.score, r.color, r.me, r.tag, r.rk, r.uid)).join('');
     note.textContent = G.mode === 'online' ? (Object.keys(G.remote).length ? `${Object.keys(G.remote).length} real player${Object.keys(G.remote).length > 1 ? 's' : ''} in your arena` : 'No one else here yet — share your link!') : '';
+  } else if (boardTab === 'weekly') {
+    if (G.weeklyRows) {
+      el.innerHTML = G.weeklyRows.length
+        ? G.weeklyRows.map((r, i) => row(i + 1, r.name, r.score, skinById(r.skin).colors[0], net && r.uid === net.uid, '', Number.isInteger(r.rk) ? r.rk : -1, r.uid)).join('')
+        : '<li class="empty">Fresh week — grab the #1 spot!</li>';
+    } else el.innerHTML = `<li class="empty">${net ? 'Loading this week…' : 'Weekly board needs the online version'}</li>`;
+    note.innerHTML = `Resets in <b>${weekResetText()}</b> · top 3 win the <b>Weekly Champ</b> skin`;
   } else {
     if (G.globalRows) {
       el.innerHTML = G.globalRows.length
-        ? G.globalRows.map((r, i) => row(i + 1, r.name, r.score, skinById(r.skin).colors[0], net && r.uid === net.uid, '', Number.isInteger(r.rk) ? r.rk : -1)).join('')
+        ? G.globalRows.map((r, i) => row(i + 1, r.name, r.score, skinById(r.skin).colors[0], net && r.uid === net.uid, '', Number.isInteger(r.rk) ? r.rk : -1, r.uid)).join('')
         : '<li class="empty">No scores yet — be the first!</li>';
       note.textContent = 'Worldwide best scores.';
     } else {
@@ -1052,12 +1212,15 @@ function renderBoard() {
     }
   }
 }
-function row(rank, name, score, color, me, tag = '', rk = null) {
-  return `<li class="${me ? 'me' : ''}"><span class="rk">${rank}</span><span class="dot" style="background:${color};--c:${color}"></span>${rk !== null && (rk >= 0 || rk === -2) ? badgeHTML(rk) : ''}<span class="nm">${esc(name)}${me ? ' <small>(you)</small>' : ''}${tag ? ` <small>${tag}</small>` : ''}</span><span class="sc">${Number(score).toLocaleString()}</span></li>`;
+function row(rank, name, score, color, me, tag = '', rk = null, uid = '') {
+  return `<li class="${me ? 'me' : ''} ${uid && net ? 'click' : ''}" ${uid ? `data-uid="${esc(uid)}"` : ''}><span class="rk">${rank}</span><span class="dot" style="background:${color};--c:${color}"></span>${rk !== null && (rk >= 0 || rk === -2) ? badgeHTML(rk) : ''}<span class="nm">${esc(name)}${me ? ' <small>(you)</small>' : ''}${tag ? ` <small>${tag}</small>` : ''}</span><span class="sc">${Number(score).toLocaleString()}</span></li>`;
 }
 
 function renderProfile() {
   $('#playerName').textContent = save.name || 'Rookie';
+  $('#titleText').textContent = save.title || '';
+  $('#titleText').classList.toggle('hidden', !save.title);
+  $('#achCount').textContent = `${ACH.filter(ac => save.ach[ac.id]).length}/${ACH.length}`;
   $('#wallet').textContent = save.coins.toLocaleString();
   $('#level').textContent = save.level;
   $('#levelText').textContent = save.level;
@@ -1112,6 +1275,7 @@ function claimDaily() {
   persist();
   sfx.coin();
   toast(`Daily drop! +${reward} coins`);
+  checkAchievements();
 }
 
 /* ---------- ranks UI ---------- */
@@ -1190,6 +1354,7 @@ function renderShop() {
     const btn = eq ? '<button class="item-btn" disabled>Equipped</button>'
       : own ? `<button class="item-btn eq" data-id="${it.id}">Equip</button>`
       : R ? `<button class="item-btn locked" data-id="${it.id}">Reach ${R.name}</button>`
+      : it.rarity === 'exclusive' ? `<button class="item-btn locked" data-id="${it.id}">Top 3 weekly</button>`
       : `<button class="item-btn buy ${save.coins < it.cost ? 'cant' : ''}" data-id="${it.id}"><span class="coin"></span>${it.cost.toLocaleString()}</button>`;
     return `<article class="item rar-${it.rarity} ${eq ? 'equipped' : ''} ${own ? 'owned' : ''}" ${R ? `style="--t:${R.tier.color}"` : ''}>
       <canvas class="pv card-pv ${skinsTab ? '' : 'fx'}" data-pv="${skinsTab ? 'skin' : 'fx'}:${it.id}"></canvas>
@@ -1215,9 +1380,10 @@ function renderShop() {
         </div></div>`;
     }
   }
-  const shop = list.filter(it => it.rarity !== 'rank'), ranked = list.filter(it => it.rarity === 'rank');
+  const shop = list.filter(it => it.rarity !== 'rank' && it.rarity !== 'exclusive'), ranked = list.filter(it => it.rarity === 'rank'), excl = list.filter(it => it.rarity === 'exclusive');
   $('#shopItems').innerHTML = featured +
     `<div class="shop-grid">${shop.map(card).join('')}</div>` +
+    (excl.length ? `<h4 class="shop-sub">Exclusive <small>finish top 3 on a weekly leaderboard</small></h4><div class="shop-grid">${excl.map(card).join('')}</div>` : '') +
     (ranked.length ? `<h4 class="shop-sub">Rank rewards <small>earn these by ranking up — they can't be bought</small></h4><div class="shop-grid">${ranked.map(card).join('')}</div>` : '');
   $$('#shopItems .item-btn[data-id]').forEach(b => { b.onclick = () => buyOrEquip(b.dataset.id); });
 }
@@ -1226,6 +1392,7 @@ function buyOrEquip(id, type) {
   const item = (skins ? SKINS : EFFECTS).find(x => x.id === id);
   const owned = skins ? save.ownedSkins : save.ownedEffects;
   if (!item) return;
+  if (!owned.includes(id) && item.rarity === 'exclusive') { toast('Finish top 3 on a weekly leaderboard to earn this'); return; }
   if (!owned.includes(id) && item.rarity === 'rank') { toast(`Reach ${RANKS[item.rank].name} (level ${RANKS[item.rank].level}) to unlock`); return; }
   if (!owned.includes(id)) {
     if (save.coins < item.cost) { toast(`Need ${item.cost - save.coins} more coins`); sfx.tone(200, 0.12, { type: 'square', vol: 0.04 }); return; }
@@ -1237,6 +1404,7 @@ function buyOrEquip(id, type) {
   if (skins) save.skin = id; else save.effect = id;
   persist();
   renderShop();
+  checkAchievements();
 }
 
 /* ---------- misc UI ---------- */
@@ -1252,19 +1420,306 @@ const show = s => $(s).classList.remove('hidden');
 const hide = s => $(s).classList.add('hidden');
 function syncFrameState() { $('#frame').dataset.state = G.state; }
 
-function setMode(mode) {
-  if (G.state === 'playing' || G.state === 'paused' || G.state === 'dying') { toast('Finish this run first'); return; }
+/* =========================================================
+   run stats, achievements, titles
+   ========================================================= */
+function burstConfettiWorld(x, y) {
+  for (let i = 0; i < 70; i++) {
+    const a = rand(0, TAU), v = rand(80, 380);
+    G.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rand(0.8, 1.6), max: 1.6, color: pick(FOOD_COLORS), size: rand(3, 6) });
+  }
+}
+function recordRunStats({ score, win, time, mode }) {
+  const st = save.stats;
+  st.time += Math.round(time);
+  st.maxSize = Math.max(st.maxSize, score, G.runMax || 0);
+  if (win) st.shrinkWins++;
+  if (mode === 'online') st.onlineRuns++;
+  submitWeekly(score);
+  setTimeout(checkAchievements, 2400);
+}
+const ACH = [
+  { id: 'first-bite', name: 'First bite', desc: 'Eat your first orb', stat: s => s.stats.orbs, goal: 1, coins: 10 },
+  { id: 'snacker', name: 'Snacker', desc: 'Eat 1,000 orbs', stat: s => s.stats.orbs, goal: 1000, coins: 60 },
+  { id: 'glutton', name: 'Bottomless', desc: 'Eat 10,000 orbs', stat: s => s.stats.orbs, goal: 10000, coins: 250, title: 'Bottomless' },
+  { id: 'golden', name: 'Gold digger', desc: 'Eat 50 big golden orbs', stat: s => s.stats.bigOrbs, goal: 50, coins: 80 },
+  { id: 'first-ko', name: 'First takedown', desc: 'Get your first KO', stat: s => s.kills, goal: 1, coins: 20 },
+  { id: 'hunter', name: 'Hunter', desc: 'Get 50 KOs', stat: s => s.kills, goal: 50, coins: 120, title: 'Hunter' },
+  { id: 'apex', name: 'Apex predator', desc: 'Get 250 KOs', stat: s => s.kills, goal: 250, coins: 400, title: 'Apex Predator' },
+  { id: 'size-100', name: 'Growing up', desc: 'Reach size 100', stat: s => s.stats.maxSize, goal: 100, coins: 30 },
+  { id: 'size-500', name: 'Big noodle', desc: 'Reach size 500', stat: s => s.stats.maxSize, goal: 500, coins: 150, title: 'Big Noodle' },
+  { id: 'size-1000', name: 'Absolute unit', desc: 'Reach size 1,000', stat: s => s.stats.maxSize, goal: 1000, coins: 400, title: 'Absolute Unit' },
+  { id: 'runs-10', name: 'Warming up', desc: 'Play 10 runs', stat: s => s.runs, goal: 10, coins: 30 },
+  { id: 'runs-100', name: 'Regular', desc: 'Play 100 runs', stat: s => s.runs, goal: 100, coins: 200, title: 'Regular' },
+  { id: 'hour', name: 'Dedicated', desc: 'Play for 1 hour in total', stat: s => Math.floor(s.stats.time / 60), goal: 60, coins: 150, title: 'Dedicated', unit: 'min' },
+  { id: 'shrink-win', name: 'Last snake standing', desc: 'Win a Shrink battle', stat: s => s.stats.shrinkWins, goal: 1, coins: 100, title: 'Last One Standing' },
+  { id: 'shrink-5', name: 'Survivor', desc: 'Win 5 Shrink battles', stat: s => s.stats.shrinkWins, goal: 5, coins: 300, title: 'Survivor' },
+  { id: 'online-1', name: 'Hello, world', desc: 'Play an online run', stat: s => s.stats.onlineRuns, goal: 1, coins: 30 },
+  { id: 'online-ko', name: 'Player hunter', desc: 'KO a real player online', stat: s => s.stats.onlineKos, goal: 1, coins: 100, title: 'Player Hunter' },
+  { id: 'friend-1', name: 'Buddy', desc: 'Add a friend', stat: s => s.stats.friends, goal: 1, coins: 50 },
+  { id: 'friend-5', name: 'Social butterfly', desc: 'Have 5 friends', stat: s => s.stats.friends, goal: 5, coins: 150, title: 'Social Butterfly' },
+  { id: 'collector-5', name: 'Collector', desc: 'Own 5 shop skins', stat: s => s.ownedSkins.filter(id => { const k = skinById(id); return k.cost > 0 && k.rarity !== 'rank'; }).length, goal: 5, coins: 100 },
+  { id: 'collector-all', name: 'Completionist', desc: 'Own every shop skin', stat: s => s.ownedSkins.filter(id => { const k = skinById(id); return k.cost > 0 && k.rarity !== 'rank'; }).length, goal: () => SKINS.filter(k => k.cost > 0 && k.rarity !== 'rank').length, coins: 1000, title: 'Completionist' },
+  { id: 'rank-gold', name: 'Going gold', desc: 'Reach Gold rank', stat: s => rankIndexFor(s.level) + 1, goal: 7, coins: 100, show: s => rankName(rankIndexFor(s.level)) },
+  { id: 'rank-diamond', name: 'Shine bright', desc: 'Reach Diamond rank', stat: s => rankIndexFor(s.level) + 1, goal: 13, coins: 300, title: 'Diamond', show: s => rankName(rankIndexFor(s.level)) },
+  { id: 'rank-champ', name: 'Champion', desc: 'Reach Champion rank', stat: s => rankIndexFor(s.level) + 1, goal: 16, coins: 600, title: 'Champion', show: s => rankName(rankIndexFor(s.level)) },
+  { id: 'weekly', name: 'Weekly legend', desc: 'Finish top 3 on a weekly board', stat: s => s.stats.weeklyTop, goal: 1, coins: 500, title: 'Weekly Legend' },
+  { id: 'streak-7', name: 'Loyal', desc: 'Claim the daily drop 7 days in a row', stat: s => s.streak, goal: 7, coins: 150, title: 'Loyal' },
+];
+const achGoal = a => (typeof a.goal === 'function' ? a.goal() : a.goal);
+let achQueue = [], achShowing = false;
+function checkAchievements() {
+  let changed = false;
+  for (const ac of ACH) {
+    if (save.ach[ac.id]) continue;
+    if (ac.stat(save) >= achGoal(ac)) {
+      save.ach[ac.id] = Date.now();
+      save.coins += ac.coins;
+      achQueue.push(ac);
+      changed = true;
+    }
+  }
+  if (changed) { persist(); showAchToasts(); }
+}
+function showAchToasts() {
+  if (achShowing) return;
+  const ac = achQueue.shift();
+  if (!ac) return;
+  achShowing = true;
+  const el = $('#achToast');
+  el.innerHTML = `<span class="trophy"></span><span><small>Achievement unlocked</small><b>${esc(ac.name)}</b><em>+${ac.coins} coins${ac.title ? ` · title “${esc(ac.title)}”` : ''}</em></span>`;
+  el.classList.add('show');
+  sfx.coin();
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => { achShowing = false; showAchToasts(); }, 350); }, 3200);
+}
+function titles() { return ACH.filter(ac => ac.title && save.ach[ac.id]).map(ac => ac.title); }
+function openAch() {
+  const unlocked = ACH.filter(ac => save.ach[ac.id]).length;
+  $('#achSummary').textContent = `${unlocked} of ${ACH.length} unlocked`;
+  const ts = titles();
+  $('#titleSelect').innerHTML = `<option value="">No title</option>` + ts.map(t => `<option ${t === save.title ? 'selected' : ''}>${esc(t)}</option>`).join('');
+  $('#titleSelect').disabled = !ts.length;
+  $('#achList').innerHTML = ACH.map(ac => {
+    const got = !!save.ach[ac.id], goal = achGoal(ac), cur = Math.min(goal, ac.stat(save));
+    return `<li class="${got ? 'got' : ''}"><span class="ach-ico"></span><div><b>${esc(ac.name)}</b><small>${esc(ac.desc)}${ac.title ? ` · <i>title: ${esc(ac.title)}</i>` : ''}</small>
+      ${got ? '' : `<div class="feat-bar"><i style="width:${Math.round((cur / goal) * 100)}%"></i></div><small>${ac.show ? esc(ac.show(save)) : `${cur.toLocaleString()} / ${goal.toLocaleString()}${ac.unit ? ' ' + ac.unit : ''}`}</small>`}</div>
+      <span class="ach-reward">${got ? 'Done' : `<span class="coin"></span>${ac.coins}`}</span></li>`;
+  }).join('');
+  show('#achModal');
+}
+
+/* =========================================================
+   weekly leaderboard
+   ========================================================= */
+function weekId(d = new Date()) {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return `${t.getUTCFullYear()}-W${String(Math.ceil(((t - y0) / 864e5 + 1) / 7)).padStart(2, '0')}`;
+}
+const prevWeekId = () => weekId(new Date(Date.now() - 7 * 864e5));
+function weekResetText() {
+  const now = new Date(), d = now.getUTCDay() || 7;
+  const ms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + (8 - d)) - now.getTime();
+  const h = Math.floor(ms / 36e5);
+  return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h ${Math.floor((ms % 36e5) / 6e4)}m`;
+}
+function submitWeekly(score) {
+  const w = weekId();
+  if (save.weekBest.w !== w) save.weekBest = { w, s: 0 };
+  if (score <= save.weekBest.s) return;
+  save.weekBest.s = score;
+  if (net && !isDev) net.submitWeekly(w, save.name || 'Rookie', score, save.skin, rankIndexFor(save.level)).catch(() => {});
+}
+async function checkWeeklyChamp() {
+  if (!net || isDev) return;
+  const prev = prevWeekId();
+  if (save.weeklyClaims.includes(prev)) return;
+  try {
+    const rows = await net.topOfWeek(prev, 3);
+    const place = rows.findIndex(r => r.uid === net.uid);
+    save.weeklyClaims.push(prev);
+    if (place >= 0) {
+      if (!save.ownedSkins.includes('weekly-champ')) save.ownedSkins.push('weekly-champ');
+      save.coins += 500;
+      save.stats.weeklyTop = 1;
+      celebrate('Weekly Champ!', `You finished #${place + 1} last week. +500 coins`, { type: 'skin', id: 'weekly-champ' });
+      checkAchievements();
+    }
+    persist();
+  } catch {}
+}
+function celebrate(title, sub, reward) {
+  $('#rankBadge').innerHTML = '<span class="trophy big"></span>';
+  $('#rankTitle').textContent = title;
+  $('#rankReward').innerHTML = `${rewardPreview(reward, true)}<span><small>${esc(sub)}</small><b>${esc(rewardItem(reward).name)}</b></span>`;
+  $('#rankEquip').dataset.type = reward.type;
+  $('#rankEquip').dataset.id = reward.id;
+  $('#rankModal').style.setProperty('--t', '#ffd23f');
+  show('#rankModal');
+  sfx.level();
+  burstConfetti('#ffd23f');
+}
+
+/* =========================================================
+   public profile, friends, private rooms
+   ========================================================= */
+let pubTimer = null;
+function savePublicSoon() {
+  if (!net) return;
+  clearTimeout(pubTimer);
+  pubTimer = setTimeout(() => {
+    net.savePublic({ name: save.name || 'Rookie', skin: save.skin, rk: isDev ? -2 : rankIndexFor(save.level), level: save.level, best: save.best, kills: save.kills, runs: save.runs, title: save.title || '', fc: save.fc || '' }).catch(() => {});
+  }, 2500);
+}
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const randCode = n => Array.from({ length: n }, () => CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0]).join('');
+async function ensureFriendCode() {
+  if (!net || save.fc) return;
+  for (let i = 0; i < 6 && !save.fc; i++) {
+    const code = randCode(6);
+    if (await net.claimFriendCode(code)) { save.fc = code; persist(); }
+  }
+  renderSocial();
+}
+const social = { friends: new Map(), requests: [], unsubs: [], sent: new Set() };
+function setupSocial() {
+  social.unsubs.forEach(u => u && u());
+  social.unsubs = [];
+  for (const f of social.friends.values()) f.unsubs.forEach(u => u && u());
+  social.friends = new Map();
+  social.requests = [];
+  if (!net) return;
+  social.unsubs.push(net.watchRequests(list => { social.requests = list; renderSocial(); }));
+  social.unsubs.push(net.watchFriends(uids => {
+    for (const [id, f] of social.friends) if (!uids.includes(id)) { f.unsubs.forEach(u => u && u()); social.friends.delete(id); }
+    for (const id of uids.slice(0, 60)) {
+      if (social.friends.has(id)) continue;
+      const f = { uid: id, pub: null, online: false, where: null, unsubs: [] };
+      social.friends.set(id, f);
+      f.unsubs.push(net.watchPublic(id, v => { f.pub = v; renderSocial(); }));
+      f.unsubs.push(net.watchPresence(id, v => { f.online = v; renderSocial(); }));
+      f.unsubs.push(net.watchWhere(id, v => { f.where = v; renderSocial(); }));
+    }
+    if (uids.length !== save.stats.friends) { save.stats.friends = uids.length; checkAchievements(); persist(); }
+    renderSocial();
+  }));
+}
+function roomLabel(room) { return !room ? '' : room === ROOM ? 'public arena' : `room ${room}`; }
+function renderSocial() {
+  const reqN = social.requests.length;
+  $('#socialBadge').textContent = reqN;
+  $('#socialBadge').classList.toggle('hidden', !reqN);
+  if ($('#socialModal').classList.contains('hidden')) return;
+  $('#myCode').textContent = save.fc || (net ? '……' : '—');
+  $('#guestNote').classList.toggle('hidden', !(net && net.user && net.user.anonymous));
+  $('#reqList').innerHTML = reqN ? social.requests.map(r => `<li><span class="nm"><b>${esc(r.n || 'Player')}</b> <small>wants to be friends</small></span><button class="item-btn eq" data-acc="${esc(r.uid)}">Accept</button><button class="icon-x" data-dec="${esc(r.uid)}" title="Decline">✕</button></li>`).join('') : '';
+  $('#reqWrap').classList.toggle('hidden', !reqN);
+  const fr = [...social.friends.values()].sort((x, y) => (y.online - x.online) || String(x.pub?.name || '').localeCompare(String(y.pub?.name || '')));
+  $('#friendList').innerHTML = fr.length ? fr.map(f => {
+    const p = f.pub || {}, room = f.online && f.where ? f.where.room : '';
+    const status = !f.online ? 'Offline' : room ? `Playing in the ${roomLabel(room)}` : 'Online in the menu';
+    const canJoin = room && room !== G.room;
+    return `<li data-uid="${esc(f.uid)}"><span class="fdot ${f.online ? 'on' : ''}"></span>${badgeHTML(Number.isInteger(p.rk) ? p.rk : -1)}<span class="nm"><b>${esc(p.name || 'Player')}</b><small>${esc(status)}</small></span>${canJoin ? `<button class="item-btn eq" data-join="${esc(room)}">Join</button>` : ''}</li>`;
+  }).join('') : '<li class="empty">No friends yet. Share your code or add theirs!</li>';
+  const inRoom = G.mode === 'online' && G.room && G.room !== ROOM;
+  $('#roomNow').innerHTML = G.mode !== 'online' ? `You're playing <b>${G.mode === 'shrink' ? 'Shrink' : 'Solo'}</b> (offline).` : inRoom ? `You're in private room <b class="code">${esc(G.room)}</b>` : 'You\'re in the <b>public arena</b>.';
+  $('#copyInvite').classList.toggle('hidden', !inRoom);
+  $('#toPublic').classList.toggle('hidden', !(G.mode === 'online' && inRoom));
+}
+function openSocial(tab = 'friends') {
+  if (!net) { toast(isConfigured(FB_CONFIG) ? 'Still connecting…' : 'Friends need the online version'); return; }
+  $$('.soc-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  $$('.soc-pane').forEach(p => p.classList.toggle('hidden', p.dataset.pane !== tab));
+  show('#socialModal');
+  renderSocial();
+  ensureFriendCode();
+}
+async function addFriendByCode(raw) {
+  const code = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 6) { toast('Friend codes are 6 letters/numbers'); return; }
+  if (code === save.fc) { toast("That's your own code!"); return; }
+  const id = await net.lookupFriendCode(code).catch(() => null);
+  if (!id) { toast('No player found with that code'); return; }
+  await sendRequest(id);
+}
+async function sendRequest(id) {
+  if (social.friends.has(id)) { toast("You're already friends"); return; }
+  const incoming = social.requests.find(r => r.uid === id);
+  if (incoming) { await net.acceptRequest(id).catch(() => {}); toast('Friend added!'); return; }
+  try { await net.sendFriendRequest(id, save.name || 'Rookie'); social.sent.add(id); toast('Friend request sent!'); sfx.click(); }
+  catch { toast("Couldn't send the request"); }
+}
+function normRoom(raw) {
+  const c = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^COIL/, '');
+  return c.length === 4 ? `COIL-${c}` : null;
+}
+function inviteLink(room) { return `${location.origin}${location.pathname}?room=${room}`; }
+function joinRoomCode(room) {
+  if (!room) { toast('Room codes look like COIL-7Q2K'); return; }
+  if (setMode('online', room)) {
+    hide('#socialModal');
+    try { history.replaceState(null, '', room === ROOM ? location.pathname : `?room=${room}`); } catch {}
+    toast(room === ROOM ? 'Back in the public arena' : `Joined ${room}`);
+  }
+}
+async function copyText(text, msg) {
+  try { await navigator.clipboard.writeText(text); toast(msg); } catch { prompt('Copy this:', text); }
+}
+
+/* ---------- profile popup ---------- */
+async function openProfile(id) {
+  if (!net || !id) return;
+  const p = await net.getPublic(id).catch(() => null);
+  if (!p) { toast('No profile yet for that player'); return; }
+  const me = id === net.uid;
+  const rk = Number.isInteger(p.rk) ? p.rk : -1;
+  $('#pfCanvas').dataset.pv = `skin:${skinById(p.skin).id}`;
+  $('#pfName').textContent = p.name || 'Player';
+  $('#pfTitle').textContent = p.title || '';
+  $('#pfTitle').classList.toggle('hidden', !p.title);
+  $('#pfRank').innerHTML = `${badgeHTML(rk, 'mid')}<span><b>${rk === -2 ? 'Developer' : rankName(rk)}</b><small>Level ${Number(p.level) || 1}</small></span>`;
+  $('#pfStats').innerHTML = [['Best', p.best], ['KOs', p.kills], ['Runs', p.runs]].map(([k, v]) => `<div class="stat"><span>${k}</span><b>${(Number(v) || 0).toLocaleString()}</b></div>`).join('');
+  const btn = $('#pfFriend');
+  btn.dataset.uid = id;
+  btn.disabled = false;
+  if (me) { btn.textContent = "That's you!"; btn.disabled = true; }
+  else if (social.friends.has(id)) { btn.textContent = 'Friends ✓ (remove)'; btn.dataset.act = 'remove'; }
+  else if (social.requests.some(r => r.uid === id)) { btn.textContent = 'Accept friend request'; btn.dataset.act = 'add'; }
+  else if (social.sent.has(id)) { btn.textContent = 'Request sent'; btn.disabled = true; }
+  else { btn.textContent = 'Add friend'; btn.dataset.act = 'add'; }
+  show('#profileModal');
+}
+
+function setMode(mode, room = ROOM) {
+  if (G.state === 'playing' || G.state === 'paused' || G.state === 'dying') { toast('Finish this run first'); return false; }
   if (mode === 'online' && !net) {
     toast(isConfigured(FB_CONFIG) ? 'Still connecting to the server…' : 'Online play needs Firebase — see SETUP guide');
-    return;
+    return false;
   }
+  const wasOnline = G.mode === 'online';
+  if (G.player) { const i = G.snakes.indexOf(G.player); if (i >= 0) G.snakes.splice(i, 1); G.player = null; }
+  if (wasOnline && (mode !== 'online' || room !== G.room)) leaveWorld();
   G.mode = mode;
-  $$('.mode').forEach(b => { const on = b.dataset.mode === mode; b.classList.toggle('active', on); b.setAttribute('aria-checked', on); });
-  $('#modeKicker').textContent = mode === 'online' ? 'Online arena' : 'Solo arena';
-  $('#arenaStatus').textContent = mode === 'online' ? 'Online arena · live' : 'Solo arena';
-  $('#liveDot').classList.toggle('online', mode === 'online');
+  G.arenaR = ARENA_R;
+  if (mode === 'online' && G.room !== room) enterWorld(room);
+  if (mode !== 'online' && wasOnline) G.foods = [];
+  if (mode === 'online' && room === ROOM) { try { history.replaceState(null, '', location.pathname); } catch {} }
+  updateModeUI();
   fillWorld();
   renderBoard();
+  renderSocial();
+  return true;
+}
+function updateModeUI() {
+  const mode = G.mode, priv = mode === 'online' && G.room && G.room !== ROOM;
+  $$('.mode').forEach(b => { const on = b.dataset.mode === mode; b.classList.toggle('active', on); b.setAttribute('aria-checked', on); });
+  $('#modeKicker').textContent = mode === 'online' ? (priv ? `Private room ${G.room}` : 'Online arena') : mode === 'shrink' ? 'Shrink battle' : 'Solo arena';
+  $('#arenaStatus').textContent = mode === 'online' ? (priv ? `Private room ${G.room}` : 'Online arena · live') : mode === 'shrink' ? 'Shrink battle · last snake wins' : 'Solo arena';
+  $('#liveDot').classList.toggle('online', mode === 'online');
+  $('#inviteBtn').classList.toggle('hidden', !priv);
+  $('#onlineSub').textContent = !net ? $('#onlineSub').textContent : priv ? G.room : 'Real players, live';
 }
 
 function setNetStatus(state) {
@@ -1382,6 +1837,7 @@ async function logOut() {
   if (G.state === 'playing' || G.state === 'paused') { G.state = 'playing'; hide('#pauseOverlay'); killSnake(G.player, { quit: true }); }
   isDev = false; devGod = false; document.body.classList.remove('is-dev');
   save = normalize({ settings, name: save.name });
+  if (G.mode === 'online') { leaveWorld(); G.mode = 'solo'; updateModeUI(); fillWorld(); }
   writeLocal();
   renderProfile();
   await net.signOutUser().catch(() => {});
@@ -1455,6 +1911,10 @@ async function syncProfile(switched = false) {
         ownedEffects: [...new Set([...c.ownedEffects, ...save.ownedEffects])],
         history: [...c.history, ...save.history].sort((a, b) => b.score - a.score).filter((h, i, arr) => arr.findIndex(x => x.score === h.score && x.date === h.date) === i).slice(0, 5),
         name: base.name || save.name || c.name,
+        stats: Object.fromEntries(STAT_KEYS.map(k => [k, Math.max(c.stats[k] || 0, save.stats[k] || 0)])),
+        ach: { ...c.ach, ...save.ach },
+        weeklyClaims: [...new Set([...c.weeklyClaims, ...save.weeklyClaims])],
+        fc: c.fc || save.fc,
         settings: save.settings,
       };
       save = normalize(merged);
@@ -1478,7 +1938,13 @@ async function connect() {
   try {
     net = await initNet(FB_CONFIG, {
       onStatus: setNetStatus,
-      onUser: (user, changed) => { renderAccount(user); if (changed) syncProfile(true); },
+      onUser: (user, changed) => {
+        renderAccount(user);
+        if (!changed) return;
+        syncProfile(true).then(() => { ensureFriendCode(); savePublicSoon(); });
+        setupSocial();
+        if (G.mode === 'online' && G.room && G.state !== 'playing') { const r = G.room; leaveWorld(); enterWorld(r); }
+      },
     });
   } catch (e) {
     console.warn('Firebase unavailable — playing offline.', e);
@@ -1492,6 +1958,11 @@ async function connect() {
   renderAccount(net.user);
   syncProfile();
   net.watchLeaderboard(rows => { G.globalRows = rows; if (boardTab === 'global') renderBoard(); });
+  net.watchWeekly(weekId(), rows => { G.weeklyRows = rows; if (boardTab === 'weekly') renderBoard(); });
+  setupSocial();
+  setTimeout(() => { ensureFriendCode(); checkWeeklyChamp(); savePublicSoon(); }, 1500);
+  const qRoom = normRoom(new URLSearchParams(location.search).get('room'));
+  if (qRoom) setTimeout(() => joinRoomCode(qRoom), 300);
   net.watchOnline(n => { G.onlineCount = n; setNetStatus('online'); $('#onlineCount').textContent = `${n} player${n === 1 ? '' : 's'} online now`; });
 }
 
@@ -1505,7 +1976,7 @@ function pointerPos(e) {
   input.hasPointer = true;
   input.lastPointer = performance.now();
 }
-function modalOpen() { return !$('#authModal').classList.contains('hidden') || !$('#rankModal').classList.contains('hidden') || !$('#shopModal').classList.contains('hidden') || !$('#nameModal').classList.contains('hidden'); }
+function modalOpen() { return ['#achModal', '#socialModal', '#profileModal', '#devModal'].some(m => !$(m).classList.contains('hidden')) || !$('#authModal').classList.contains('hidden') || !$('#rankModal').classList.contains('hidden') || !$('#shopModal').classList.contains('hidden') || !$('#nameModal').classList.contains('hidden'); }
 
 function bindEvents() {
   new ResizeObserver(resize).observe(canvas);
@@ -1533,7 +2004,39 @@ function bindEvents() {
   $('#shopModal').addEventListener('click', e => { if (e.target.id === 'shopModal') hide('#shopModal'); });
   $$('.shop-tab').forEach(b => { b.onclick = () => { $$('.shop-tab').forEach(x => x.classList.toggle('active', x === b)); shopTab = b.dataset.tab; renderShop(); sfx.click(); }; });
   $$('.board-tab').forEach(b => { b.onclick = () => { $$('.board-tab').forEach(x => x.classList.toggle('active', x === b)); boardTab = b.dataset.board; renderBoard(); }; });
-  $$('.mode').forEach(b => { b.onclick = () => { sfx.click(); setMode(b.dataset.mode); }; });
+  $$('.mode').forEach(b => { b.onclick = () => { sfx.click(); setMode(b.dataset.mode, b.dataset.mode === 'online' ? (G.mode === 'online' && G.room ? G.room : ROOM) : undefined); }; });
+  $('#leaderboard').addEventListener('click', e => { const li = e.target.closest('li[data-uid]'); if (li && net) openProfile(li.dataset.uid); });
+  $('#achBtn').onclick = () => { sfx.click(); openAch(); };
+  $('#achClose').onclick = () => hide('#achModal');
+  $('#achModal').addEventListener('click', e => { if (e.target.id === 'achModal') hide('#achModal'); });
+  $('#titleSelect').onchange = e => { save.title = e.target.value; persist(); toast(save.title ? `Title set: ${save.title}` : 'Title removed'); };
+  $('#socialBtn').onclick = () => { sfx.click(); openSocial('friends'); };
+  $('#socialClose').onclick = () => hide('#socialModal');
+  $('#socialModal').addEventListener('click', e => {
+    if (e.target.id === 'socialModal') { hide('#socialModal'); return; }
+    const acc = e.target.closest('[data-acc]'), dec = e.target.closest('[data-dec]'), join = e.target.closest('[data-join]'), li = e.target.closest('#friendList li[data-uid]');
+    if (acc) { net.acceptRequest(acc.dataset.acc).then(() => { toast('Friend added!'); sfx.coin(); }).catch(() => toast("Couldn't accept")); return; }
+    if (dec) { net.declineRequest(dec.dataset.dec).catch(() => {}); return; }
+    if (join) { joinRoomCode(join.dataset.join); return; }
+    if (li) openProfile(li.dataset.uid);
+  });
+  $$('.soc-tab').forEach(b => { b.onclick = () => openSocial(b.dataset.tab); });
+  $('#copyCode').onclick = () => save.fc && copyText(save.fc, 'Friend code copied');
+  $('#addFriendBtn').onclick = () => addFriendByCode($('#addFriendInput').value);
+  $('#addFriendInput').addEventListener('keydown', e => { if (e.key === 'Enter') addFriendByCode(e.target.value); });
+  $('#createRoom').onclick = () => { const code = `COIL-${randCode(4)}`; joinRoomCode(code); setTimeout(() => copyText(inviteLink(code), 'Room created — invite link copied!'), 200); };
+  $('#joinRoomBtn').onclick = () => joinRoomCode(normRoom($('#joinRoomInput').value));
+  $('#joinRoomInput').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoomCode(normRoom(e.target.value)); });
+  $('#copyInvite').onclick = () => copyText(inviteLink(G.room), 'Invite link copied!');
+  $('#inviteBtn').onclick = () => copyText(inviteLink(G.room), 'Invite link copied!');
+  $('#toPublic').onclick = () => joinRoomCode(ROOM);
+  $('#pfClose').onclick = () => hide('#profileModal');
+  $('#profileModal').addEventListener('click', e => { if (e.target.id === 'profileModal') hide('#profileModal'); });
+  $('#pfFriend').onclick = async () => {
+    const b = $('#pfFriend'), id = b.dataset.uid;
+    if (b.dataset.act === 'remove') { if (confirm('Remove this friend?')) { await net.removeFriend(id).catch(() => {}); toast('Friend removed'); hide('#profileModal'); } return; }
+    b.disabled = true; await sendRequest(id); openProfile(id);
+  };
   $('#dailyBtn').onclick = claimDaily;
   $('#rankRow').onclick = () => { shopTab = 'ranks'; $$('.shop-tab').forEach(x => x.classList.toggle('active', x.dataset.tab === 'ranks')); openShop(); };
   $('#rankClose').onclick = () => { sfx.click(); nextRankUp(); };
@@ -1609,6 +2112,7 @@ function bindEvents() {
       return;
     }
     if (e.key === 'Escape') {
+      for (const m of ['#achModal', '#socialModal', '#profileModal']) if (!$(m).classList.contains('hidden')) { hide(m); return; }
       if (!$('#devModal').classList.contains('hidden')) { hide('#devModal'); return; }
       if (!$('#authModal').classList.contains('hidden')) { hide('#authModal'); return; }
       if (!$('#rankModal').classList.contains('hidden')) { nextRankUp(); return; }
@@ -1665,6 +2169,8 @@ function init() {
   setNetStatus(isConfigured(FB_CONFIG) ? 'connecting' : 'offline');
   if (!save.name) { show('#nameModal'); setTimeout(() => $('#nameInput').focus(), 60); }
   requestAnimationFrame(t => { last = t; requestAnimationFrame(frame); });
+  setTimeout(checkAchievements, 3000);
+  setInterval(() => { if (boardTab === 'weekly') renderBoard(); }, 60000);
   connect();
 }
 init();

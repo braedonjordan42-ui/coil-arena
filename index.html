@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
   <div id="loadError" hidden style="position:fixed;z-index:99;left:12px;right:12px;top:12px;padding:14px 16px;border-radius:14px;background:#ff5fa2;color:#fff;font:600 15px/1.45 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.4)"></div>
@@ -54,9 +54,14 @@
         <div class="card profile">
           <div class="avatar-wrap"><canvas id="avatar" width="176" height="176"></canvas><span class="lvl" id="level">1</span></div>
           <button class="name-btn" id="nameBtn" title="Change your name"><span id="playerName">Rookie</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+          <div class="title-text hidden" id="titleText"></div>
           <button class="rank-row" id="rankRow" title="See all ranks"></button>
           <div class="xp"><span id="xpFill"></span></div>
           <div class="xp-label"><span>Level <b id="levelText">1</b></span><span id="xpText">0 / 100 XP</span></div>
+          <div class="profile-actions">
+            <button class="ghost-btn" id="achBtn"><span class="trophy"></span>Awards <small id="achCount">0/0</small></button>
+            <button class="ghost-btn" id="socialBtn"><span class="people"></span>Friends <b class="badge hidden" id="socialBadge">0</b></button>
+          </div>
         </div>
 
         <div class="stats">
@@ -69,6 +74,9 @@
         <div class="modes" role="radiogroup" aria-label="Play mode">
           <button class="mode active" data-mode="solo" role="radio" aria-checked="true">
             <span class="mode-ico solo"></span><span><b>Solo</b><small>You vs. 12 bots</small></span>
+          </button>
+          <button class="mode" data-mode="shrink" role="radio" aria-checked="false">
+            <span class="mode-ico shrink"></span><span><b>Shrink</b><small>Last snake wins</small></span>
           </button>
           <button class="mode" data-mode="online" role="radio" aria-checked="false">
             <span class="mode-ico online"></span><span><b>Online</b><small id="onlineSub">Needs Firebase</small></span>
@@ -95,6 +103,7 @@
 
           <div class="hud hud-score"><span>Score</span><b id="score">0</b><small>Best <span id="hudBest">0</span></small></div>
           <div class="hud hud-right">
+            <span class="zone-chip hidden" id="zoneChip"></span>
             <span class="rank-chip">#<b id="rank">1</b><small>/<span id="aliveCount">1</span></small></span>
             <button id="pauseBtn" class="round-btn hidden" aria-label="Pause" title="Pause (Esc)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.5" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.5" fill="currentColor"/></svg></button>
           </div>
@@ -102,6 +111,7 @@
           <div class="hud hud-boost"><span>Boost</span><div class="boost-track"><i id="boostMeter"></i></div></div>
           <button id="boostBtn" class="boost-btn" aria-label="Hold to boost">BOOST</button>
           <div class="toast" id="toast" role="status" aria-live="polite"></div>
+          <ul class="kill-feed" id="killFeed" aria-live="polite"></ul>
 
           <!-- Start -->
           <div class="overlay start" id="startOverlay">
@@ -121,7 +131,7 @@
           <!-- Game over -->
           <div class="overlay dim hidden" id="deathCard">
             <div class="end-card">
-              <span class="kicker pink"><i></i> Run over</span>
+              <span class="kicker pink" id="deathKicker"><i></i> <span>Run over</span></span>
               <h2 id="deathTitle">Oof, bonked!</h2>
               <p class="death-by" id="deathBy">You ran into a wall.</p>
               <div class="newbest hidden" id="newBest">New personal best!</div>
@@ -129,7 +139,7 @@
                 <div><span>Score</span><b id="finalScore">0</b></div>
                 <div><span>KOs</span><b id="finalKos">0</b></div>
                 <div><span>Time</span><b id="finalTime">0s</b></div>
-                <div><span>Top rank</span><b id="finalRank">#1</b></div>
+                <div><span id="finalRankLabel">Top rank</span><b id="finalRank">#1</b></div>
               </div>
               <div class="reward"><span>Earned</span><b><span class="coin"></span><span id="runReward">0</span></b><b class="xp-earn">+<span id="runXp">0</span> XP</b></div>
               <div class="next-unlock hidden" id="nextUnlock"></div>
@@ -159,13 +169,15 @@
             </div>
           </div>
         </div>
-        <div class="stage-foot"><span><i class="live" id="liveDot"></i> <b id="arenaStatus">Solo arena</b></span><span id="onlineCount">Season 1 · Neon Night</span></div>
+        <div class="stage-foot"><span><i class="live" id="liveDot"></i> <b id="arenaStatus">Solo arena</b></span><button class="link-btn small hidden" id="inviteBtn">Copy invite link</button>
+        <span id="onlineCount">Season 1 · Neon Night</span></div>
       </section>
 
       <!-- RIGHT: boards + shop -->
       <aside class="panel right">
         <div class="board-tabs" role="tablist">
-          <button class="board-tab active" data-board="arena" role="tab">This arena</button>
+          <button class="board-tab active" data-board="arena" role="tab">Arena</button>
+          <button class="board-tab" data-board="weekly" role="tab">Weekly</button>
           <button class="board-tab" data-board="global" role="tab">All-time</button>
         </div>
         <ol class="board" id="leaderboard"></ol>
@@ -257,6 +269,53 @@
     </section>
   </div>
 
+  <!-- Achievements -->
+  <div class="modal hidden" id="achModal" role="dialog" aria-modal="true" aria-labelledby="achTitle">
+    <section class="sheet">
+      <header><div><span class="kicker"><i></i> Awards</span><h2 id="achTitle">Achievements</h2></div><button class="round-btn" id="achClose" aria-label="Close">✕</button></header>
+      <div class="ach-top"><span id="achSummary"></span><label>Show title <select id="titleSelect"></select></label></div>
+      <ul class="ach-list" id="achList"></ul>
+    </section>
+  </div>
+
+  <!-- Friends & rooms -->
+  <div class="modal hidden" id="socialModal" role="dialog" aria-modal="true" aria-labelledby="socTitle">
+    <section class="sheet">
+      <header><div><span class="kicker"><i></i> Play together</span><h2 id="socTitle">Friends &amp; rooms</h2></div><button class="round-btn" id="socialClose" aria-label="Close">✕</button></header>
+      <div class="shop-tabs"><button class="soc-tab shop-tab active" data-tab="friends">Friends</button><button class="soc-tab shop-tab" data-tab="rooms">Private rooms</button></div>
+      <div class="soc-pane" data-pane="friends">
+        <div class="code-box"><span><small>Your friend code</small><b id="myCode">……</b></span><button class="ghost-btn" id="copyCode">Copy</button></div>
+        <p class="guest-note hidden" id="guestNote">You're playing as a guest — sign up so you never lose your friends.</p>
+        <div class="add-row"><input id="addFriendInput" maxlength="8" placeholder="Enter a friend's code" autocomplete="off" spellcheck="false"><button class="primary-btn small" id="addFriendBtn">Add</button></div>
+        <div id="reqWrap" class="hidden"><h4 class="shop-sub">Friend requests</h4><ul class="friend-list" id="reqList"></ul></div>
+        <h4 class="shop-sub">Friends</h4>
+        <ul class="friend-list" id="friendList"></ul>
+      </div>
+      <div class="soc-pane hidden" data-pane="rooms">
+        <p class="room-now" id="roomNow"></p>
+        <button class="primary-btn wide" id="createRoom">Create a private room</button>
+        <p class="auth-note">You'll get a code like COIL-7Q2K and an invite link to send to friends.</p>
+        <div class="add-row"><input id="joinRoomInput" maxlength="9" placeholder="Room code, e.g. COIL-7Q2K" autocomplete="off" spellcheck="false"><button class="ghost-btn" id="joinRoomBtn">Join</button></div>
+        <div class="room-actions"><button class="ghost-btn hidden" id="copyInvite">Copy invite link</button><button class="ghost-btn hidden" id="toPublic">Back to public arena</button></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Player profile -->
+  <div class="modal hidden" id="profileModal" role="dialog" aria-modal="true" aria-labelledby="pfName">
+    <section class="sheet narrow pf">
+      <button class="round-btn close-x" id="pfClose" aria-label="Close">✕</button>
+      <canvas class="pv pf-pv" id="pfCanvas" data-pv="skin:aurora"></canvas>
+      <h2 id="pfName">Player</h2>
+      <div class="title-text hidden" id="pfTitle"></div>
+      <div class="rank-row static" id="pfRank"></div>
+      <div class="stats" id="pfStats"></div>
+      <button class="primary-btn wide" id="pfFriend">Add friend</button>
+    </section>
+  </div>
+
+  <div class="ach-toast" id="achToast" role="status" aria-live="polite"></div>
+
   <!-- Name -->
   <div class="modal hidden" id="nameModal" role="dialog" aria-modal="true" aria-labelledby="nameTitle">
     <section class="sheet narrow">
@@ -267,9 +326,9 @@
     </section>
   </div>
 
-  <script src="firebase-config.js?v=6"></script>
-  <script src="net.js?v=6"></script>
-  <script src="skins.js?v=6"></script>
-  <script src="app.js?v=6"></script>
+  <script src="firebase-config.js?v=8"></script>
+  <script src="net.js?v=8"></script>
+  <script src="skins.js?v=8"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

@@ -6,14 +6,15 @@ A friendly, glowing snake game that runs in any browser — desktop or phone. Ea
 
 ## Features
 
-- Smooth snake physics, cute animated snakes, glowing neon arena and minimap
-- 12 bots with different personalities in Solo — some hunt you, some just snack
-- **Online mode** with real players (Firebase Realtime Database) and KO credit across players
-- Worldwide all-time leaderboard, players-online counter
-- Coins, XP levels, daily streak rewards, 8 skins and 5 KO effects
-- Cloud save (guest) plus optional **Save progress with Google** to sync devices
-- Mouse, keyboard (arrows / WASD) and touch controls with a boost button; pause with Esc
-- Works fully offline with bots if Firebase isn't set up yet
+- Glowing neon arena with smooth snake physics, minimap, sounds and a kill feed
+- **Solo** (12 bots), **Shrink** (battle royale — the zone closes in, last snake wins) and **Online**
+- **Shared online world** — everyone in a room sees the same food, and death orbs drop for everyone
+- **Private rooms** with invite links (`?room=COIL-XXXX`) and a **friends** system with friend codes
+- **Player profiles** — click any name on a leaderboard
+- **Weekly** and **all-time** leaderboards; weekly top 3 earn the exclusive Weekly Champ skin
+- 26 **achievements** that unlock coins and titles
+- 18 ranks (Bronze → Champion) with exclusive rewards; 21 shop skins including character skins (train, rocket, shark, donuts…)
+- Accounts: guest, email/password, Google; cloud saves; developer accounts
 
 ## Controls
 

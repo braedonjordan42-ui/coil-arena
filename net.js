@@ -21,7 +21,7 @@ async function initNet(cfg, { onStatus = () => {}, onUser = () => {} } = {}) {
   ]);
   const { initializeApp } = appMod;
   const { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, linkWithPopup, signInWithPopup, signInWithCredential, EmailAuthProvider, linkWithCredential, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } = authMod;
-  const { getDatabase, ref, set, update, remove, get, onValue, onDisconnect, query, orderByChild, limitToLast, equalTo, push, onChildAdded, serverTimestamp } = dbMod;
+  const { getDatabase, ref, set, update, remove, get, onValue, onDisconnect, query, orderByChild, limitToLast, equalTo, push, onChildAdded, onChildChanged, onChildRemoved, serverTimestamp } = dbMod;
 
   const app = initializeApp(cfg);
   const auth = getAuth(app);
@@ -156,27 +156,103 @@ async function initNet(cfg, { onStatus = () => {}, onUser = () => {} } = {}) {
       return onValue(ref(db, 'presence'), s => cb(s.size || 0), () => cb(0));
     },
 
-    // ---------- live multiplayer room ----------
-    joinRoom(roomId, { onPlayers, onKill }) {
+    // ---------- weekly leaderboard ----------
+    submitWeekly(week, name, score, skin, rk = -1) {
+      return set(ref(db, `weekly/${week}/${uid}`), { name: String(name).slice(0, 16) || 'Rookie', score: Math.floor(score), skin: skin || '', rk: Number.isInteger(rk) ? rk : -1, t: serverTimestamp() });
+    },
+    watchWeekly(week, cb, n = 10) {
+      return onValue(query(ref(db, `weekly/${week}`), orderByChild('score'), limitToLast(n)), s => {
+        const rows = [];
+        s.forEach(c => { rows.push({ uid: c.key, ...c.val() }); });
+        rows.sort((a, b) => b.score - a.score);
+        cb(rows);
+      }, () => cb(null));
+    },
+    async topOfWeek(week, n = 3) {
+      const s = await get(query(ref(db, `weekly/${week}`), orderByChild('score'), limitToLast(n)));
+      const rows = [];
+      s.forEach(c => { rows.push({ uid: c.key, ...c.val() }); });
+      return rows.sort((a, b) => b.score - a.score);
+    },
+
+    // ---------- public profiles ----------
+    savePublic(data) { return set(ref(db, `publicProfiles/${uid}`), { ...data, seen: serverTimestamp() }); },
+    async getPublic(id) { const s = await get(ref(db, `publicProfiles/${id}`)); return s.exists() ? s.val() : null; },
+    watchPublic(id, cb) { return onValue(ref(db, `publicProfiles/${id}`), s => cb(s.val()), () => cb(null)); },
+    watchPresence(id, cb) { return onValue(ref(db, `presence/${id}`), s => cb(s.exists()), () => cb(false)); },
+    setWhere(roomId) {
+      const r = ref(db, `whereabouts/${uid}`);
+      if (roomId) onDisconnect(r).remove().catch(() => {});
+      return set(r, roomId ? { room: roomId, t: serverTimestamp() } : null).catch(() => {});
+    },
+    watchWhere(id, cb) { return onValue(ref(db, `whereabouts/${id}`), s => cb(s.val()), () => cb(null)); },
+
+    // ---------- friends ----------
+    async claimFriendCode(code) {
+      try { await set(ref(db, `friendCodes/${code}`), uid); return true; } catch { return false; }
+    },
+    async lookupFriendCode(code) { const s = await get(ref(db, `friendCodes/${code}`)); return s.exists() ? s.val() : null; },
+    sendFriendRequest(to, name) { return set(ref(db, `friendRequests/${to}/${uid}`), { n: String(name).slice(0, 16), t: serverTimestamp() }); },
+    watchRequests(cb) {
+      return onValue(ref(db, `friendRequests/${uid}`), s => { const out = []; s.forEach(c => { out.push({ uid: c.key, ...c.val() }); }); cb(out); }, () => cb([]));
+    },
+    acceptRequest(from) {
+      return update(ref(db), { [`friends/${uid}/${from}`]: true, [`friends/${from}/${uid}`]: true, [`friendRequests/${uid}/${from}`]: null });
+    },
+    declineRequest(from) { return remove(ref(db, `friendRequests/${uid}/${from}`)); },
+    removeFriend(f) { return update(ref(db), { [`friends/${uid}/${f}`]: null, [`friends/${f}/${uid}`]: null }); },
+    watchFriends(cb) {
+      return onValue(ref(db, `friends/${uid}`), s => { const out = []; s.forEach(c => { out.push(c.key); }); cb(out); }, () => cb([]));
+    },
+
+    // ---------- live multiplayer room (shared world) ----------
+    // h: { onPlayers, onKill, onFood(slot, gen), onDrop(id, v), onDropChange(id, v), onDropRemoved(id) }
+    joinRoom(roomId, h) {
       api.leaveRoom();
       room = roomId;
       myPlayerRef = ref(db, `rooms/${room}/players/${uid}`);
       onDisconnect(myPlayerRef).remove().catch(() => {});
-      roomUnsubs.push(onValue(ref(db, `rooms/${room}/players`), s => {
+      const base = `rooms/${room}`;
+      roomUnsubs.push(onValue(ref(db, `${base}/players`), s => {
         const players = {};
         const now = api.now();
         s.forEach(c => {
           const v = c.val();
           if (c.key !== uid && v && now - (v.t || 0) < 8000) players[c.key] = v;
         });
-        onPlayers(players);
+        h.onPlayers && h.onPlayers(players);
       }));
-      const killsQ = query(ref(db, `rooms/${room}/kills`), orderByChild('k'), equalTo(uid));
+      const killsQ = query(ref(db, `${base}/kills`), orderByChild('k'), equalTo(uid));
       roomUnsubs.push(onChildAdded(killsQ, c => {
         const v = c.val();
         remove(c.ref).catch(() => {});
-        if (v && api.now() - (v.t || 0) < 15000) onKill(v);
+        if (v && api.now() - (v.t || 0) < 15000) h.onKill && h.onKill(v);
       }));
+      const foodRef = ref(db, `${base}/food`);
+      const onFood = c => h.onFood && h.onFood(Number(c.key), Number(c.val()) || 0);
+      roomUnsubs.push(onChildAdded(foodRef, onFood), onChildChanged(foodRef, onFood));
+      const dropsRef = ref(db, `${base}/drops`);
+      roomUnsubs.push(
+        onChildAdded(dropsRef, c => h.onDrop && h.onDrop(c.key, c.val())),
+        onChildChanged(dropsRef, c => h.onDropChange && h.onDropChange(c.key, c.val())),
+        onChildRemoved(dropsRef, c => h.onDropRemoved && h.onDropRemoved(c.key)),
+      );
+    },
+    eatFood(slot, gen) {
+      if (!room) return;
+      set(ref(db, `rooms/${room}/food/${slot}`), gen + 1).catch(() => {});
+    },
+    pushDrop(d) {
+      if (!room) return;
+      push(ref(db, `rooms/${room}/drops`), { ...d, u: uid, t: serverTimestamp() }).catch(() => {});
+    },
+    eatDrop(id, k) {
+      if (!room) return;
+      set(ref(db, `rooms/${room}/drops/${id}/e/${k}`), 1).catch(() => {});
+    },
+    removeDrop(id) {
+      if (!room) return;
+      remove(ref(db, `rooms/${room}/drops/${id}`)).catch(() => {});
     },
     publish(state) {
       if (!myPlayerRef) return;
@@ -185,10 +261,11 @@ async function initNet(cfg, { onStatus = () => {}, onUser = () => {} } = {}) {
     removeMe() {
       if (myPlayerRef) remove(myPlayerRef).catch(() => {});
     },
-    reportKill(killerUid, victimName) {
+    reportKill(killerUid, victimName, killerName = '') {
       if (!room || !killerUid) return;
-      push(ref(db, `rooms/${room}/kills`), { k: killerUid, v: uid, n: String(victimName).slice(0, 16), t: serverTimestamp() }).catch(() => {});
+      push(ref(db, `rooms/${room}/kills`), { k: killerUid, v: uid, n: String(victimName).slice(0, 16), kn: String(killerName).slice(0, 16), t: serverTimestamp() }).catch(() => {});
     },
+    get room() { return room; },
     leaveRoom() {
       roomUnsubs.forEach(u => u());
       roomUnsubs = [];

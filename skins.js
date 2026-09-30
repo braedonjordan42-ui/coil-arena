@@ -24,9 +24,20 @@ const SHOP = [
   { id: 'robot', name: 'Robo-snek', tag: 'Beep boop. Snack detected.', colors: ['#d3d9ee', '#8a93b5'], pattern: 'metal', acc: 'antenna', accent: '#38e1ff', eyes: 'visor', cheeks: false, cost: 900, rarity: 'epic' },
   { id: 'ghost', name: 'Boo', tag: 'Spooky, but friendly.', colors: ['#f4f1ff', '#c9c2ff'], pattern: 'ghost', eyes: 'spooky', cheeks: false, trail: 'frost', aura: '#c9c2ff', cost: 1000, rarity: 'epic' },
   { id: 'rainbow', name: 'Rainbow road', tag: 'Leaves a rainbow everywhere.', colors: ['#ff5fa2', '#ff9f43', '#ffd23f', '#b6ff5c', '#38e1ff', '#9b7bff'], pattern: 'flow', speed: 0.7, trail: 'rainbow', aura: '#ffffff', cost: 1300, rarity: 'legendary' },
+  { id: 'caterpillar', name: 'Caterpillar', tag: 'Very hungry. Very cute.', colors: ['#9be15d', '#5fcf6a'], accent: '#ffe45c', pattern: 'bands', band: 1, legs: true, acc: 'antenna', cost: 650, rarity: 'epic', character: true },
+  { id: 'donut', name: 'Donut run', tag: 'A whole dozen, on the move.', colors: ['#ff7ab8', '#7a4a2b', '#7dffd2', '#fff2cc'], shape: 'donut', cost: 750, rarity: 'epic', character: true },
+  { id: 'pearls', name: 'String of pearls', tag: 'Fancy. Extremely fancy.', colors: ['#fff8f0', '#ffd9ec', '#d9e8ff'], shape: 'pearls', eyes: 'star', starColor: '#ff9fce', aura: '#ffd9ec', cost: 900, rarity: 'epic', character: true },
+  { id: 'fruit', name: 'Fruit salad', tag: 'Part of a balanced diet.', colors: ['#ff3b5c', '#9be15d'], shape: 'fruit', cost: 1000, rarity: 'epic', character: true },
+  { id: 'shark', name: 'Shark', tag: 'Dun dun... dun dun...', colors: ['#7fb2ff', '#4a74d9'], pattern: 'gradient', fins: true, snout: true, trail: 'bubbles', cost: 1200, rarity: 'legendary', character: true },
+  { id: 'train', name: 'Choo-choo', tag: 'All aboard the snack express!', colors: ['#ff5a4e', '#38e1ff', '#ffd23f', '#b6ff5c', '#9b7bff'], shape: 'train', trail: 'smoke', cost: 1500, rarity: 'legendary', character: true },
+  { id: 'mecha', name: 'Mecha-pede', tag: 'Forty legs. Zero chill.', colors: ['#c9d1ea', '#8a93b5', '#5b6386'], accent: '#38e1ff', shape: 'mecha', eyes: 'visor', cost: 1800, rarity: 'legendary', character: true },
+  { id: 'rocket', name: 'Rocket', tag: 'To the moon (and back).', colors: ['#f4f1ff', '#ff5a4e'], shape: 'rocket', trail: 'fire', aura: '#ff9f43', cost: 2500, rarity: 'mythic', character: true },
   { id: 'dragon', name: 'Dragon', tag: 'Breathes fire. Literally.', colors: ['#3ddc8c', '#1a9e62'], accent: '#ffd23f', pattern: 'scales', acc: 'horns', trail: 'fire', aura: '#5cffc8', eyes: 'star', starColor: '#ffd23f', cost: 1600, rarity: 'legendary' },
 ];
 // Rank skins: clean metallic finishes; Elite versions add trails, auras and accessories.
+const EXCLUSIVE = [
+  { id: 'weekly-champ', name: 'Weekly Champ', tag: 'Only for a weekly top 3.', colors: ['#fff6c9', '#ffd23f', '#ffe98f'], shape: 'pearls', acc: 'crown', eyes: 'star', starColor: '#ffd23f', trail: 'sparkle', trailColors: ['#ffd23f', '#fff6c9'], aura: '#ffd23f', cost: 0, rarity: 'exclusive', character: true },
+];
 const RANK = [
   { id: 'bronze', name: 'Bronze', tag: 'Polished and proud.', colors: ['#ffc896', '#d9854a', '#a85c2a'], pattern: 'metal' },
   { id: 'bronze-elite', name: 'Bronze Elite', tag: 'Forged in the arena.', colors: ['#ffd9b3', '#e08d4f', '#9c4f1f'], pattern: 'metal', trail: 'embers', aura: '#f0a56b', eyes: 'star', starColor: '#ffd9b3' },
@@ -43,7 +54,7 @@ const RANK = [
 ];
 
 const ACC_NAMES = { bow: 'Bow', shades: 'Shades', antenna: 'Antenna', ears: 'Ears', horns: 'Horns', halo: 'Halo', crown: 'Crown' };
-const TRAIL_NAMES = { sparkle: 'Sparkle trail', bubbles: 'Bubble trail', fire: 'Fire trail', embers: 'Ember trail', stars: 'Star trail', hearts: 'Heart trail', rainbow: 'Rainbow trail', frost: 'Frost trail', prism: 'Prism trail' };
+const TRAIL_NAMES = { smoke: 'Smoke puffs', sparkle: 'Sparkle trail', bubbles: 'Bubble trail', fire: 'Fire trail', embers: 'Ember trail', stars: 'Star trail', hearts: 'Heart trail', rainbow: 'Rainbow trail', frost: 'Frost trail', prism: 'Prism trail' };
 function features(sk) {
   const f = [];
   if (sk.pattern === 'flow' || sk.pattern === 'galaxy') f.push('Animated');
@@ -53,6 +64,9 @@ function features(sk) {
   if (sk.eyes === 'shades') f.push('Shades');
   if (sk.eyes === 'visor') f.push('Visor');
   if (sk.eyes === 'star') f.push('Star eyes');
+  if (sk.character) f.unshift('Character');
+  if (sk.legs) f.push('Legs');
+  if (sk.fins) f.push('Fins');
   if (sk.trail) f.push(TRAIL_NAMES[sk.trail]);
   if (sk.aura) f.push('Aura');
   return f;
@@ -130,6 +144,7 @@ function drawSnakeBody(c, s, sk, o) {
   compile(sk);
   const pts = s.pts, n = pts.length;
   if (n < 2) return;
+  if (sk.shape && SHAPES[sk.shape]) { drawShaped(c, s, sk, o); return; }
   const t = o.t, r = s.r, sp = o.sp || 6;
   const step = Math.max(1, Math.round((r * 0.55) / sp));
   const radiusAt = i => { const q = i / n; return q > 0.62 ? r * (1 - ((q - 0.62) / 0.38) * 0.55) : r; };
@@ -217,6 +232,32 @@ function drawSnakeBody(c, s, sk, o) {
     }
   }
 
+  // caterpillar legs / shark fins
+  if (sk.legs) {
+    c.strokeStyle = css(sk._outline); c.lineCap = 'round';
+    for (let i = step * 2; i < n * 0.9; i += step) {
+      const p = pts[i], q = pts[Math.max(0, i - step)], rr = radiusAt(i);
+      let dx = q.x - p.x, dy = q.y - p.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+      const wig = Math.sin(t * 14 + i * 0.5) * 0.35;
+      c.lineWidth = rr * 0.22;
+      for (const sd of [-1, 1]) {
+        c.beginPath();
+        c.moveTo(p.x - dy * sd * rr * 0.8, p.y + dx * sd * rr * 0.8);
+        c.lineTo(p.x - dy * sd * rr * 1.25 + dx * rr * wig, p.y + dx * sd * rr * 1.25 + dy * rr * wig);
+        c.stroke();
+      }
+      if ((i / step | 0) % 2 === 0) { c.fillStyle = css(sk._accent); c.beginPath(); c.arc(p.x, p.y, rr * 0.22, 0, TAU); c.fill(); }
+    }
+  }
+  if (sk.fins) {
+    const dark = shade(sk._pal[1], -0.25);
+    const at = (i, fn) => { const p = pts[i], q = pts[Math.max(0, i - 2)]; const a = Math.atan2(q.y - p.y, q.x - p.x); c.save(); c.translate(p.x, p.y); c.rotate(a); fn(radiusAt(i)); c.restore(); };
+    c.fillStyle = css(dark);
+    at(Math.floor(n * 0.22), rr => { c.beginPath(); c.moveTo(rr * 0.9, 0); c.quadraticCurveTo(-rr * 0.2, -rr * 0.35, -rr * 1.6, -rr * 0.05); c.lineTo(-rr * 1.6, rr * 0.05); c.quadraticCurveTo(-rr * 0.2, rr * 0.35, rr * 0.9, 0); c.fill(); });
+    at(n - 1, rr => { c.beginPath(); c.moveTo(rr * 0.6, 0); c.lineTo(-rr * 1.5, -rr * 1.7); c.lineTo(-rr * 0.9, 0); c.lineTo(-rr * 1.5, rr * 1.7); c.closePath(); c.fill(); });
+    at(Math.min(n - 1, 6), rr => { for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(rr * 0.2, sd * rr * 0.8); c.lineTo(-rr * 0.9, sd * rr * 1.75); c.lineTo(-rr * 0.5, sd * rr * 0.7); c.closePath(); c.fill(); } });
+  }
+
   // gloss along the back
   const metal = sk.pattern === 'metal' || sk.metal || sk.pattern === 'crystal';
   c.beginPath();
@@ -293,6 +334,22 @@ function drawHead(c, s, sk, o) {
   }
 
   // head
+  if (sk.snout) {
+    c.save(); c.translate(hx, hy); c.rotate(a);
+    c.fillStyle = css(dark, 0.95);
+    c.beginPath(); c.ellipse(r * 0.45, 0, r * 1.65, r * 1.12, 0, 0, TAU); c.fill();
+    c.fillStyle = css(headCol);
+    c.beginPath(); c.ellipse(r * 0.45, 0, r * 1.52, r * 1.0, 0, 0, TAU); c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.85)';
+    c.beginPath(); c.ellipse(r * 0.7, 0, r * 1.05, r * 0.55, 0, 0, TAU); c.fill();
+    c.strokeStyle = css(dark); c.lineWidth = r * 0.1;
+    for (const sd of [-1, 1]) for (let g = 0; g < 3; g++) { c.beginPath(); c.arc(-r * 0.35 - g * r * 0.22, sd * r * 0.55, r * 0.35, sd > 0 ? -0.2 : 3.34, sd > 0 ? 1.2 : 1.94 + 3.34); c.stroke(); }
+    c.fillStyle = '#fff';
+    c.beginPath();
+    for (let k = 0; k <= 6; k++) { const yy = -r * 0.5 + (k * r) / 6; c.lineTo(r * 1.75 - (k % 2 ? r * 0.22 : 0), yy); }
+    c.lineTo(r * 1.5, r * 0.5); c.lineTo(r * 1.5, -r * 0.5); c.closePath(); c.fill();
+    c.restore();
+  }
   c.fillStyle = css(dark, 0.95);
   c.beginPath(); c.arc(hx, hy, r * 1.08 + Math.max(1.5, r * 0.13), 0, TAU); c.fill();
   c.fillStyle = sk.pattern === 'ghost' ? css(headCol, 0.95) : css(headCol);
@@ -406,13 +463,14 @@ function drawCrown(c, x, y, r) {
   c.fillStyle = '#ff5fa2'; c.beginPath(); c.arc(x, y - h * 0.32, r * 0.13, 0, TAU); c.fill();
   c.fillStyle = '#38e1ff'; c.beginPath(); c.arc(x - w * 0.3, y - h * 0.28, r * 0.08, 0, TAU); c.arc(x + w * 0.3, y - h * 0.28, r * 0.08, 0, TAU); c.fill();
 }
-const headroom = sk => (sk.acc === 'crown' ? 12 : sk.acc === 'halo' ? 14 : 0);
+const headroom = sk => (sk.acc === 'crown' ? 12 : sk.acc === 'halo' ? 14 : sk.shape === 'train' ? 4 : 0);
 
 /* =========================================================
    trails
    ========================================================= */
 const RAINBOW = ['#ff5fa2', '#ff9f43', '#ffd23f', '#b6ff5c', '#38e1ff', '#9b7bff'];
 const TRAIL = {
+  smoke: { rate: 0.07, life: 1.3, size: [5, 9], rise: 26, puff: true, from: 'head', colors: ['#f4f1ff', '#c9c2ff', '#9e97c9'] },
   sparkle: { rate: 0.05, life: 0.9, size: [2.5, 5], glow: true },
   bubbles: { rate: 0.09, life: 1.4, size: [3, 7], rise: 26 },
   fire: { rate: 0.03, life: 0.55, size: [5, 9], glow: true, rise: 34, colors: ['#ffd23f', '#ff9f43', '#ff4d4d'] },
@@ -431,7 +489,7 @@ function trailTick(s, sk, dt, list, scale = 1, max = 600) {
   while (s._tt > def.rate) {
     s._tt -= def.rate;
     if (list.length >= max) { list.shift(); }
-    const n = s.pts.length, i = Math.floor(n * rand(0.45, 0.98)), p = s.pts[Math.min(n - 1, i)];
+    const n = s.pts.length, i = def.from === 'head' ? 0 : Math.floor(n * rand(0.45, 0.98)), p = def.from === 'head' ? { x: s.x + Math.cos(s.angle) * s.r * 0.05, y: s.y + Math.sin(s.angle) * s.r * 0.05 } : s.pts[Math.min(n - 1, i)];
     const colors = def.colors || sk.trailColors || sk.colors;
     const color = def.rainbow ? RAINBOW[Math.floor(performance.now() / 90) % RAINBOW.length] : colors[(Math.random() * colors.length) | 0];
     const rr = s.r * 0.8 * scale;
@@ -468,6 +526,9 @@ function drawTrails(c, list, bounds) {
       c.beginPath();
       for (let j = 0; j < 8; j++) { const ang = q.rot + (j * Math.PI) / 4, rad = j % 2 ? q.size * 0.35 : q.size; c.lineTo(q.x + Math.cos(ang) * rad, q.y + Math.sin(ang) * rad); }
       c.closePath(); c.fill();
+    } else if (def.puff) {
+      c.fillStyle = q.color; c.globalAlpha = Math.min(0.75, k);
+      c.beginPath(); c.arc(q.x, q.y, q.size * (1.6 - k * 0.7), 0, TAU); c.fill();
     } else if (def.heart) {
       c.fillStyle = q.color;
       c.font = `${q.size | 0}px sans-serif`;
@@ -549,5 +610,251 @@ function drawEffectPreview(cv, fx, t) {
   c.globalAlpha = 1;
 }
 
-window.coilSkins = { SHOP, RANK, features, drawSnakeBody, drawSkinPreview, drawEffectPreview, trailTick, updateTrails, drawTrails, headroom, compile };
+/* =========================================================
+   character skins (custom segment + head shapes)
+   ========================================================= */
+function rrect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+// cute eyes in local (rotated) coordinates: +x is forward
+function localEyes(c, r, sk, o, fwd = 0.38, spread = 0.5, size = 0.42, lookRel = 0) {
+  const er = r * size, lx = Math.cos(lookRel), ly = Math.sin(lookRel);
+  for (const sd of [-1, 1]) {
+    const ex = r * fwd, ey = sd * r * spread;
+    if (o.blink) { c.strokeStyle = '#1a1644'; c.lineWidth = r * 0.15; c.beginPath(); c.moveTo(ex, ey - er * 0.8); c.lineTo(ex, ey + er * 0.8); c.stroke(); continue; }
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(ex, ey, er, 0, TAU); c.fill();
+    const px = ex + lx * er * 0.38, py = ey + ly * er * 0.38;
+    if (sk.eyes === 'star') {
+      const R = er * 0.72;
+      c.fillStyle = sk.starColor || '#ffd23f'; c.beginPath();
+      for (let k = 0; k < 10; k++) { const ang = (k * Math.PI) / 5 + o.t * 0.8, rad = k % 2 ? R * 0.42 : R; c.lineTo(px + Math.cos(ang) * rad, py + Math.sin(ang) * rad); }
+      c.closePath(); c.fill();
+    } else {
+      c.fillStyle = '#1a1644'; c.beginPath(); c.arc(px, py, er * 0.55, 0, TAU); c.fill();
+      c.fillStyle = '#fff'; c.beginPath(); c.arc(px - er * 0.2, py - er * 0.18, er * 0.18, 0, TAU); c.fill();
+    }
+  }
+}
+function cheeks(c, r, x = 0.05, spread = 0.82) {
+  c.fillStyle = 'rgba(255,95,162,0.38)';
+  for (const sd of [-1, 1]) { c.beginPath(); c.arc(r * x, sd * r * spread, r * 0.2, 0, TAU); c.fill(); }
+}
+const SPRINKLES = ['#ffd23f', '#38e1ff', '#ffffff', '#b6ff5c', '#ff5fa2'];
+const FRUITS = ['orange', 'melon', 'kiwi', 'lemon'];
+const SHAPES = {
+  train: {
+    gap: 2.05, taper: 0,
+    seg(c, rr, k, sk, t) {
+      const col = sk._pal[k % sk._pal.length];
+      c.fillStyle = '#1a1644';
+      c.fillRect(-rr * 1.2, -rr * 0.18, rr * 0.5, rr * 0.36);
+      for (const sd of [-1, 1]) for (const wx of [-0.5, 0.5]) { c.fillStyle = '#2a2350'; rrect(c, rr * wx - rr * 0.22, sd * rr * 0.72 - rr * 0.14, rr * 0.44, rr * 0.28 + 1, rr * 0.1); c.fill(); }
+      c.fillStyle = css(shade(col, -0.55)); rrect(c, -rr * 0.95, -rr * 0.82, rr * 1.9, rr * 1.64, rr * 0.34); c.fill();
+      c.fillStyle = css(col); rrect(c, -rr * 0.85, -rr * 0.72, rr * 1.7, rr * 1.44, rr * 0.28); c.fill();
+      c.fillStyle = css(shade(col, 0.35)); rrect(c, -rr * 0.7, -rr * 0.3, rr * 1.4, rr * 0.6, rr * 0.2); c.fill();
+      c.fillStyle = 'rgba(255,246,201,0.9)';
+      for (const wx of [-0.45, 0, 0.45]) { rrect(c, rr * wx - rr * 0.14, -rr * 0.16, rr * 0.28, rr * 0.32, rr * 0.08); c.fill(); }
+    },
+    head(c, r, sk, o) {
+      const body = sk._pal[0], dark = shade(body, -0.55);
+      c.fillStyle = '#2a2350';
+      for (const sd of [-1, 1]) for (const wx of [-0.6, 0.2, 0.9]) { rrect(c, r * wx - r * 0.25, sd * r * 0.85 - r * 0.15, r * 0.5, r * 0.3 + 1, r * 0.1); c.fill(); }
+      c.fillStyle = css(dark); rrect(c, -r * 1.25, -r * 0.98, r * 2.6, r * 1.96, r * 0.42); c.fill();
+      c.fillStyle = '#ffd23f'; c.beginPath(); c.moveTo(r * 1.3, -r * 0.8); c.lineTo(r * 1.95, 0); c.lineTo(r * 1.3, r * 0.8); c.closePath(); c.fill();
+      c.fillStyle = css(body); rrect(c, -r * 1.15, -r * 0.88, r * 2.4, r * 1.76, r * 0.36); c.fill();
+      c.fillStyle = '#2a2350'; rrect(c, -r * 1.05, -r * 0.7, r * 0.8, r * 1.4, r * 0.2); c.fill();
+      c.fillStyle = 'rgba(255,246,201,0.9)'; rrect(c, -r * 0.95, -r * 0.55, r * 0.6, r * 1.1, r * 0.15); c.fill();
+      c.fillStyle = '#2a2350'; c.beginPath(); c.arc(r * 0.05, 0, r * 0.36, 0, TAU); c.fill();
+      c.fillStyle = '#5b5480'; c.beginPath(); c.arc(r * 0.05, 0, r * 0.22, 0, TAU); c.fill();
+      c.save(); c.translate(r * 0.45, 0); localEyes(c, r, sk, o, 0.45, 0.45, 0.36); c.restore();
+      cheeks(c, r, 0.6, 0.72);
+    },
+  },
+  donut: {
+    gap: 1.75, taper: 0.25,
+    seg(c, rr, k, sk, t) {
+      c.fillStyle = '#8a4f22'; c.beginPath(); c.arc(0, 0, rr * 1.05, 0, TAU); c.fill();
+      c.fillStyle = '#e8a860'; c.beginPath(); c.arc(0, 0, rr * 0.96, 0, TAU); c.fill();
+      c.fillStyle = css(sk._pal[k % sk._pal.length]);
+      c.beginPath();
+      for (let j = 0; j <= 16; j++) { const a = (j / 16) * TAU, w = rr * (0.8 + 0.07 * Math.sin(j * 2.7 + k)); c.lineTo(Math.cos(a) * w, Math.sin(a) * w); }
+      c.closePath(); c.fill();
+      c.fillStyle = '#120f33'; c.beginPath(); c.arc(0, 0, rr * 0.28, 0, TAU); c.fill();
+      c.strokeStyle = '#e8a860'; c.lineWidth = rr * 0.1; c.stroke();
+      c.lineWidth = rr * 0.12; c.lineCap = 'round';
+      for (let j = 0; j < 6; j++) {
+        const h = hash(k * 7 + j), a = h * TAU, d = rr * (0.45 + hash(k + j * 3) * 0.25);
+        c.strokeStyle = SPRINKLES[j % SPRINKLES.length];
+        c.beginPath(); c.moveTo(Math.cos(a) * d, Math.sin(a) * d); c.lineTo(Math.cos(a) * d + Math.cos(a * 3) * rr * 0.16, Math.sin(a) * d + Math.sin(a * 3) * rr * 0.16); c.stroke();
+      }
+    },
+    head(c, r, sk, o) {
+      const R = r * 1.25;
+      c.fillStyle = '#8a4f22'; c.beginPath(); c.arc(0, 0, R * 1.05, 0, TAU); c.fill();
+      c.fillStyle = '#e8a860'; c.beginPath(); c.arc(0, 0, R * 0.96, 0, TAU); c.fill();
+      c.fillStyle = css(sk._pal[0]);
+      c.beginPath(); for (let j = 0; j <= 18; j++) { const a = (j / 18) * TAU, w = R * (0.82 + 0.06 * Math.sin(j * 2.3)); c.lineTo(Math.cos(a) * w, Math.sin(a) * w); } c.closePath(); c.fill();
+      c.lineWidth = r * 0.14; c.lineCap = 'round';
+      for (let j = 0; j < 8; j++) { const a = hash(j + 50) * TAU, d = R * (0.35 + hash(j + 9) * 0.35); c.strokeStyle = SPRINKLES[j % 5]; c.beginPath(); c.moveTo(Math.cos(a) * d, Math.sin(a) * d); c.lineTo(Math.cos(a) * d + r * 0.18, Math.sin(a) * d + r * 0.1); c.stroke(); }
+      localEyes(c, r, sk, o, 0.35, 0.5, 0.42);
+      cheeks(c, r, 0.0, 0.85);
+    },
+  },
+  pearls: {
+    gap: 1.4, taper: 0.35, string: true,
+    seg(c, rr, k, sk, t, a) {
+      const col = sk._pal[k % sk._pal.length];
+      c.fillStyle = css(shade(col, -0.45)); c.beginPath(); c.arc(0, 0, rr * 0.92, 0, TAU); c.fill();
+      c.fillStyle = css(col); c.beginPath(); c.arc(0, 0, rr * 0.84, 0, TAU); c.fill();
+      c.rotate(-a);
+      c.fillStyle = 'rgba(255,255,255,0.9)'; c.beginPath(); c.ellipse(-rr * 0.3, -rr * 0.32, rr * 0.28, rr * 0.18, -0.6, 0, TAU); c.fill();
+      const tw = Math.sin(t * 3 + k * 1.9);
+      if (tw > 0.6) { c.fillStyle = `rgba(255,255,255,${(tw - 0.6) * 2.5})`; c.beginPath(); c.arc(rr * 0.35, rr * 0.3, rr * 0.12, 0, TAU); c.fill(); }
+    },
+    head(c, r, sk, o) {
+      const col = sk._pal[0];
+      c.fillStyle = css(shade(col, -0.45)); c.beginPath(); c.arc(0, 0, r * 1.18, 0, TAU); c.fill();
+      c.fillStyle = css(col); c.beginPath(); c.arc(0, 0, r * 1.08, 0, TAU); c.fill();
+      localEyes(c, r, sk, o, 0.38, 0.5, 0.42);
+      cheeks(c, r);
+    },
+    headAfter(c, s, sk, o) {
+      if (sk.acc === 'crown') drawCrown(c, s.x, s.y - s.r * 1.1, s.r);
+      c.save(); c.translate(s.x, s.y);
+      c.fillStyle = 'rgba(255,255,255,0.85)'; c.beginPath(); c.ellipse(-s.r * 0.4, -s.r * 0.45, s.r * 0.32, s.r * 0.2, -0.6, 0, TAU); c.fill();
+      c.restore();
+    },
+  },
+  fruit: {
+    gap: 1.7, taper: 0.3,
+    seg(c, rr, k, sk, t) {
+      const kind = FRUITS[k % 4];
+      if (kind === 'orange' || kind === 'lemon') {
+        const rind = kind === 'orange' ? '#ff8a1f' : '#f2c900', flesh = kind === 'orange' ? '#ffb347' : '#fff07a';
+        c.fillStyle = rind; c.beginPath(); c.arc(0, 0, rr, 0, TAU); c.fill();
+        c.fillStyle = '#fff6e0'; c.beginPath(); c.arc(0, 0, rr * 0.88, 0, TAU); c.fill();
+        c.fillStyle = flesh; c.beginPath(); c.arc(0, 0, rr * 0.8, 0, TAU); c.fill();
+        c.strokeStyle = '#fff6e0'; c.lineWidth = rr * 0.08;
+        for (let j = 0; j < 8; j++) { const a = (j / 8) * TAU + k; c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(a) * rr * 0.8, Math.sin(a) * rr * 0.8); c.stroke(); }
+      } else if (kind === 'melon') {
+        c.fillStyle = '#1f8f4a'; c.beginPath(); c.arc(0, 0, rr, 0, TAU); c.fill();
+        c.fillStyle = '#c8ffd9'; c.beginPath(); c.arc(0, 0, rr * 0.86, 0, TAU); c.fill();
+        c.fillStyle = '#ff4d6d'; c.beginPath(); c.arc(0, 0, rr * 0.78, 0, TAU); c.fill();
+        c.fillStyle = '#2a1838';
+        for (let j = 0; j < 6; j++) { const a = (j / 6) * TAU + 0.4, d = rr * 0.45; c.beginPath(); c.ellipse(Math.cos(a) * d, Math.sin(a) * d, rr * 0.07, rr * 0.13, a, 0, TAU); c.fill(); }
+      } else {
+        c.fillStyle = '#7a5230'; c.beginPath(); c.arc(0, 0, rr, 0, TAU); c.fill();
+        c.fillStyle = '#9be15d'; c.beginPath(); c.arc(0, 0, rr * 0.88, 0, TAU); c.fill();
+        c.fillStyle = '#d7ffb0'; c.beginPath(); c.arc(0, 0, rr * 0.36, 0, TAU); c.fill();
+        c.fillStyle = '#2a1838';
+        for (let j = 0; j < 10; j++) { const a = (j / 10) * TAU, d = rr * 0.52; c.beginPath(); c.arc(Math.cos(a) * d, Math.sin(a) * d, rr * 0.06, 0, TAU); c.fill(); }
+      }
+    },
+    head(c, r, sk, o) {
+      c.fillStyle = '#3ddc8c';
+      for (let j = 0; j < 5; j++) { const a = Math.PI + (j - 2) * 0.45; c.beginPath(); c.ellipse(Math.cos(a) * r * 0.95, Math.sin(a) * r * 0.95, r * 0.55, r * 0.22, a, 0, TAU); c.fill(); }
+      c.fillStyle = '#c21d3d'; c.beginPath(); c.ellipse(r * 0.1, 0, r * 1.25, r * 1.12, 0, 0, TAU); c.fill();
+      c.fillStyle = '#ff3b5c'; c.beginPath(); c.ellipse(r * 0.1, 0, r * 1.15, r * 1.03, 0, 0, TAU); c.fill();
+      c.fillStyle = '#ffe45c';
+      for (let j = 0; j < 12; j++) { const a = hash(j) * TAU, d = r * (0.35 + hash(j + 4) * 0.55); const x = r * 0.1 + Math.cos(a) * d, y = Math.sin(a) * d * 0.9; if (x > r * 0.1 && Math.abs(y) < r * 0.8) continue; c.beginPath(); c.ellipse(x, y, r * 0.05, r * 0.09, a, 0, TAU); c.fill(); }
+      localEyes(c, r, sk, o, 0.42, 0.48, 0.4);
+      cheeks(c, r, 0.1, 0.78);
+    },
+  },
+  mecha: {
+    gap: 1.3, taper: 0.3,
+    seg(c, rr, k, sk, t) {
+      const swing = Math.sin(t * 16 + k * 0.9) * 0.4;
+      c.strokeStyle = css(sk._pal[2]); c.lineWidth = rr * 0.18; c.lineCap = 'round';
+      for (const sd of [-1, 1]) {
+        c.beginPath(); c.moveTo(0, sd * rr * 0.6);
+        c.lineTo(rr * swing * sd, sd * rr * 1.25); c.lineTo(rr * (swing * sd - 0.35), sd * rr * 1.55); c.stroke();
+      }
+      c.fillStyle = css(shade(sk._pal[2], -0.4));
+      c.beginPath(); for (let j = 0; j < 6; j++) { const a = (j / 6) * TAU; c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr * 0.92); } c.closePath(); c.fill();
+      c.fillStyle = css(sk._pal[k % 2]);
+      c.beginPath(); for (let j = 0; j < 6; j++) { const a = (j / 6) * TAU; c.lineTo(Math.cos(a) * rr * 0.86, Math.sin(a) * rr * 0.8); } c.closePath(); c.fill();
+      c.fillStyle = 'rgba(255,255,255,0.35)'; c.fillRect(-rr * 0.5, -rr * 0.5, rr * 1.0, rr * 0.16);
+      const pulse = 0.6 + 0.4 * Math.sin(t * 5 + k);
+      c.globalCompositeOperation = 'lighter';
+      c.drawImage(glow(sk.accent), -rr * 0.6 * pulse, -rr * 0.6 * pulse, rr * 1.2 * pulse, rr * 1.2 * pulse);
+      c.globalCompositeOperation = 'source-over';
+    },
+    head(c, r, sk, o) {
+      c.strokeStyle = css(sk._pal[2]); c.lineWidth = r * 0.2; c.lineCap = 'round';
+      const bite = Math.sin(o.t * 6) * 0.15;
+      for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(r * 0.7, sd * r * 0.55); c.quadraticCurveTo(r * 1.7, sd * r * (0.9 + bite), r * 1.55, sd * r * 0.15); c.stroke(); }
+      c.fillStyle = css(shade(sk._pal[2], -0.4));
+      c.beginPath(); for (let j = 0; j < 6; j++) { const a = (j / 6) * TAU + Math.PI / 6; c.lineTo(Math.cos(a) * r * 1.25, Math.sin(a) * r * 1.15); } c.closePath(); c.fill();
+      c.fillStyle = css(sk._pal[0]);
+      c.beginPath(); for (let j = 0; j < 6; j++) { const a = (j / 6) * TAU + Math.PI / 6; c.lineTo(Math.cos(a) * r * 1.12, Math.sin(a) * r * 1.02); } c.closePath(); c.fill();
+      c.fillStyle = '#15122e'; rrect(c, r * 0.15, -r * 0.75, r * 0.6, r * 1.5, r * 0.25); c.fill();
+      const scan = Math.sin(o.t * 3);
+      c.fillStyle = sk.accent; rrect(c, r * 0.35, -r * 0.6, r * 0.2, r * 1.2, r * 0.1); c.fill();
+      c.globalCompositeOperation = 'lighter';
+      c.drawImage(glow(sk.accent), r * 0.45 - r * 0.6, scan * r * 0.5 - r * 0.6, r * 1.2, r * 1.2);
+      c.globalCompositeOperation = 'source-over';
+    },
+  },
+  rocket: {
+    gap: 0.85, taper: 0.1, flame: true,
+    seg(c, rr, k, sk, t, a, q) {
+      const flick = 0.85 + 0.2 * Math.sin(t * 22 + k * 1.7);
+      const stops = [[0, [255, 250, 220]], [0.12, [255, 210, 63]], [0.3, [255, 159, 67]], [0.5, [255, 77, 77]], [0.7, [143, 136, 184]], [1, [90, 84, 130]]];
+      let col = stops[stops.length - 1][1];
+      for (let j = 1; j < stops.length; j++) if (q <= stops[j][0]) { const [q0, c0] = stops[j - 1], [q1, c1] = stops[j]; col = mix(c0, c1, (q - q0) / (q1 - q0)); break; }
+      const smoke = q > 0.55;
+      c.globalAlpha = smoke ? Math.max(0.15, 1 - (q - 0.55) * 1.6) : 1;
+      if (!smoke) c.globalCompositeOperation = 'lighter';
+      c.fillStyle = css(col);
+      c.beginPath(); c.arc(0, 0, rr * flick * (smoke ? 1 + (q - 0.55) * 0.8 : 0.9), 0, TAU); c.fill();
+      c.globalCompositeOperation = 'source-over';
+      c.globalAlpha = 1;
+    },
+    head(c, r, sk, o) {
+      c.fillStyle = '#ff5a4e';
+      for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(-r * 0.4, sd * r * 0.6); c.lineTo(-r * 1.35, sd * r * 1.35); c.lineTo(-r * 1.2, sd * r * 0.4); c.closePath(); c.fill(); }
+      c.fillStyle = '#5b5480'; rrect(c, -r * 1.3, -r * 0.5, r * 0.4, r * 1.0, r * 0.12); c.fill();
+      c.fillStyle = '#c9c2ff'; c.beginPath(); c.ellipse(r * 0.1, 0, r * 1.45, r * 0.86, 0, 0, TAU); c.fill();
+      c.fillStyle = '#f4f1ff'; c.beginPath(); c.ellipse(r * 0.1, 0, r * 1.36, r * 0.78, 0, 0, TAU); c.fill();
+      c.fillStyle = '#ff5a4e';
+      c.beginPath(); c.moveTo(r * 0.85, -r * 0.62); c.quadraticCurveTo(r * 1.9, 0, r * 0.85, r * 0.62); c.closePath(); c.fill();
+      c.fillStyle = '#5b5480'; c.beginPath(); c.arc(r * 0.05, 0, r * 0.55, 0, TAU); c.fill();
+      c.fillStyle = '#38e1ff'; c.beginPath(); c.arc(r * 0.05, 0, r * 0.45, 0, TAU); c.fill();
+      c.save(); c.translate(r * 0.05, 0); localEyes(c, r, sk, o, 0.05, 0.2, 0.17); c.restore();
+      c.fillStyle = 'rgba(255,255,255,0.7)'; c.beginPath(); c.ellipse(-r * 0.1, -r * 0.2, r * 0.14, r * 0.08, -0.6, 0, TAU); c.fill();
+    },
+  },
+};
+function drawShaped(c, s, sk, o) {
+  const S = SHAPES[sk.shape];
+  const pts = s.pts, n = pts.length, t = o.t, r = s.r, sp = o.sp || 6;
+  const step = Math.max(1, Math.round((r * S.gap) / sp));
+  const radiusAt = i => { const q = i / n; return S.taper && q > 0.6 ? r * (1 - ((q - 0.6) / 0.4) * S.taper) : r; };
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  // glow / aura
+  c.beginPath(); c.moveTo(pts[0].x, pts[0].y);
+  for (let i = 2; i < n; i += 2) c.lineTo(pts[i].x, pts[i].y);
+  const auraCol = sk._aura || sk._pal[0];
+  c.strokeStyle = css(auraCol, (s.boosting ? 0.3 : 0.12) + (sk._aura ? 0.06 * Math.sin(t * 3) + 0.05 : 0));
+  c.lineWidth = r * 2 + (s.boosting ? 30 : 18);
+  c.stroke();
+  if (S.string) { c.strokeStyle = 'rgba(255,240,250,0.55)'; c.lineWidth = Math.max(1.2, r * 0.14); c.stroke(); }
+  for (let i = n - 1 - ((n - 1) % step); i >= step; i -= step) {
+    const p = pts[i], q = pts[Math.max(0, i - step)];
+    const a = Math.atan2(q.y - p.y, q.x - p.x);
+    c.save(); c.translate(p.x, p.y); c.rotate(a);
+    S.seg(c, radiusAt(i), i / step | 0, sk, t, a, i / n);
+    c.restore();
+  }
+  c.save(); c.translate(s.x, s.y); c.rotate(s.angle);
+  S.head(c, r, sk, { ...o, t });
+  c.restore();
+  if (S.headAfter) S.headAfter(c, s, sk, o);
+  else if (sk.acc === 'crown') drawCrown(c, s.x, s.y - r * 1.1, r);
+}
+
+window.coilSkins = { SHOP, RANK, EXCLUSIVE, features, drawSnakeBody, drawSkinPreview, drawEffectPreview, trailTick, updateTrails, drawTrails, headroom, compile };
 })();
