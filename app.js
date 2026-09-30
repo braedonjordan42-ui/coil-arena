@@ -97,7 +97,7 @@ const freshSave = () => ({
   skin: 'aurora', effect: 'spark', ownedSkins: ['aurora'], ownedEffects: ['spark'],
   daily: '', streak: 0, history: [], submittedBest: 0,
   stats: {}, ach: {}, title: '', weekBest: { w: '', s: 0 }, fc: '', weeklyClaims: [],
-  settings: { sound: true, sensitivity: 1, shake: true }, updated: 0,
+  settings: { sound: true, sensitivity: 1, shake: true, lockMouse: true }, updated: 0,
 });
 const STAT_KEYS = ['orbs', 'bigOrbs', 'time', 'maxSize', 'shrinkWins', 'onlineRuns', 'onlineKos', 'weeklyTop', 'friends'];
 function normalize(raw) {
@@ -539,7 +539,46 @@ function botThink(b, dt) {
 }
 
 /* ---------- player ---------- */
-const input = { mx: 0, my: 0, hasPointer: false, keys: new Set(), boostKey: false, boostMouse: false, boostTouch: false, lastKey: 0, lastPointer: 0 };
+const input = { mx: 0, my: 0, hasPointer: false, keys: new Set(), boostKey: false, boostMouse: false, boostTouch: false, lastKey: 0, lastPointer: 0, locked: false, aimX: 120, aimY: 0, lockLostAt: 0 };
+
+/* ---------- mouse lock (desktop): keeps the cursor inside the game until Esc ---------- */
+const AIM_MAX = 240;
+const canLock = () => save.settings.lockMouse !== false && matchMedia('(pointer: fine)').matches && !matchMedia('(pointer: coarse)').matches && 'requestPointerLock' in canvas;
+function headScreen(p) {
+  return { x: (p.x - G.cam.x) * G.cam.zoom + view.w / 2, y: (p.y - G.cam.y) * G.cam.zoom + view.h / 2 };
+}
+function lockMouse() {
+  if (!canLock() || document.pointerLockElement === canvas || G.state !== 'playing') return;
+  // aim where the snake is already heading (or where the mouse was), so nothing jerks on lock
+  const p = G.player;
+  if (p) {
+    const h = headScreen(p);
+    const dx = input.mx - h.x, dy = input.my - h.y, d = Math.hypot(dx, dy);
+    if (input.hasPointer && d > 20) { const k = Math.min(1, AIM_MAX / d); input.aimX = dx * k; input.aimY = dy * k; }
+    else { input.aimX = Math.cos(p.angle) * 120; input.aimY = Math.sin(p.angle) * 120; }
+  }
+  try {
+    const r = canvas.requestPointerLock({ unadjustedMovement: false });
+    if (r && r.catch) r.catch(() => { try { canvas.requestPointerLock(); } catch {} });
+  } catch {}
+}
+function unlockMouse() {
+  if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+}
+function onLockChange() {
+  const was = input.locked;
+  input.locked = document.pointerLockElement === canvas;
+  $('#frame').classList.toggle('locked', input.locked);
+  $('#lockHint').classList.add('hidden');
+  if (was && !input.locked) {
+    input.lockLostAt = performance.now();
+    input.boostMouse = false;
+    if (G.state === 'playing') {
+      if (G.mode === 'online') $('#lockHint').classList.remove('hidden');   // online can't pause
+      else pause();
+    }
+  }
+}
 function playerDesired(p) {
   let kx = 0, ky = 0;
   const k = input.keys;
@@ -548,6 +587,10 @@ function playerDesired(p) {
   if (k.has('ArrowUp') || k.has('KeyW')) ky -= 1;
   if (k.has('ArrowDown') || k.has('KeyS')) ky += 1;
   if ((kx || ky) && input.lastKey >= input.lastPointer) return Math.atan2(ky, kx);
+  if (input.locked) {
+    if (input.aimX * input.aimX + input.aimY * input.aimY < 100) return p.angle;
+    return Math.atan2(input.aimY, input.aimX);
+  }
   if (input.hasPointer) {
     const sx = (p.x - G.cam.x) * G.cam.zoom + view.w / 2;
     const sy = (p.y - G.cam.y) * G.cam.zoom + view.h / 2;
@@ -638,6 +681,7 @@ function startRunInner() {
   $('#pauseBtn').classList.toggle('hidden', G.mode === 'online');
   if (G.mode === 'shrink') toast('The zone closes in 10 seconds — be the last snake!');
   if (innerWidth < 820) $('#frame').scrollIntoView({ block: 'end', behavior: 'smooth' });
+  lockMouse();
   if (G.mode !== 'shrink') toast(G.mode === 'online' ? 'You\'re live — good luck!' : 'Go get \'em!');
   syncFrameState();
 }
@@ -645,6 +689,8 @@ function pause() {
   if (G.state !== 'playing') return;
   if (G.mode === 'online') { toast('Online runs can\'t be paused'); return; }
   G.state = 'paused';
+  unlockMouse();
+  $('#lockToggle').checked = save.settings.lockMouse !== false;
   $('#soundToggle').checked = save.settings.sound;
   $('#sensitivity').value = save.settings.sensitivity;
   $('#shakeToggle').checked = save.settings.shake;
@@ -657,10 +703,12 @@ function resume() {
   hide('#pauseOverlay');
   $('#pauseBtn').classList.toggle('hidden', G.mode === 'online');
   syncFrameState();
+  lockMouse();
 }
 function toMenu() {
   if (G.player && G.state !== 'playing') { const i = G.snakes.indexOf(G.player); if (i >= 0) G.snakes.splice(i, 1); G.player = null; }
   G.state = 'menu';
+  unlockMouse();
   hide('#deathCard'); hide('#pauseOverlay'); show('#startOverlay'); hide('#pauseBtn');
   syncFrameState();
 }
@@ -699,6 +747,8 @@ function playerDied(cause) {
   };
 }
 function showDeath() {
+  unlockMouse();
+  $('#lockHint').classList.add('hidden');
   const d = G.deathInfo;
   G.state = 'dead';
   $('#deathTitle').textContent = d.title;
@@ -1062,6 +1112,22 @@ function render() {
   }
   ctx.globalAlpha = 1;
   ctx.restore();
+
+  // aim reticle while the mouse is locked
+  if (input.locked && G.player && !G.player.dead && G.state === 'playing') {
+    const h = headScreen(G.player), x = h.x + input.aimX, y = h.y + input.aimY;
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = '#38e1ff'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(x, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.95;
+    ctx.lineWidth = 2.5; ctx.strokeStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(x, y, 9, 0, TAU); ctx.stroke();
+    ctx.fillStyle = input.boostMouse || input.boostKey ? '#ffd23f' : '#38e1ff';
+    ctx.beginPath(); ctx.arc(x, y, 3.5, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
 }
 
 function drawSnake(s, isMe) {
@@ -1333,7 +1399,7 @@ function renderLadder() {
 
 /* ---------- shop ---------- */
 let shopTab = 'skins';
-function openShop() { renderShop(); show('#shopModal'); sfx.click(); if (G.state === 'playing' && G.mode === 'solo') pause(); }
+function openShop() { unlockMouse(); renderShop(); show('#shopModal'); sfx.click(); if (G.state === 'playing' && G.mode === 'solo') pause(); }
 function renderShop() {
   $('#shopWallet').textContent = save.coins.toLocaleString();
   $('#shopItems').classList.toggle('ladder-mode', shopTab === 'ranks');
@@ -1970,6 +2036,14 @@ async function connect() {
    input + events
    ========================================================= */
 function pointerPos(e) {
+  if (input.locked) {
+    input.aimX += e.movementX || 0;
+    input.aimY += e.movementY || 0;
+    const d = Math.hypot(input.aimX, input.aimY);
+    if (d > AIM_MAX) { input.aimX *= AIM_MAX / d; input.aimY *= AIM_MAX / d; }
+    input.lastPointer = performance.now();
+    return;
+  }
   const r = canvas.getBoundingClientRect();
   input.mx = e.clientX - r.left;
   input.my = e.clientY - r.top;
@@ -1982,9 +2056,13 @@ function bindEvents() {
   new ResizeObserver(resize).observe(canvas);
   canvas.addEventListener('pointermove', pointerPos);
   canvas.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && G.state === 'playing' && !input.locked && canLock()) { pointerPos(e); lockMouse(); return; }
     pointerPos(e);
     if (e.pointerType === 'mouse' && e.button === 0 && G.state === 'playing') input.boostMouse = true;
   });
+  document.addEventListener('pointerlockchange', onLockChange);
+  document.addEventListener('pointerlockerror', () => { input.locked = false; });
+  $('#lockHint').onclick = () => lockMouse();
   window.addEventListener('pointerup', e => { if (e.pointerType === 'mouse') input.boostMouse = false; });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -2060,6 +2138,7 @@ function bindEvents() {
   $('#soundToggle').onchange = e => { save.settings.sound = e.target.checked; persist(); };
   $('#sensitivity').oninput = e => { save.settings.sensitivity = Number(e.target.value); persist(); };
   $('#shakeToggle').onchange = e => { save.settings.shake = e.target.checked; persist(); };
+  $('#lockToggle').onchange = e => { save.settings.lockMouse = e.target.checked; persist(); };
 
   $('#signupBtn').onclick = () => openAuth('signup');
   $('#copyIdBtn').onclick = async () => { try { await navigator.clipboard.writeText(net.uid); toast('Player ID copied'); } catch { prompt('Your player ID:', net.uid); } };
@@ -2118,6 +2197,7 @@ function bindEvents() {
       if (!$('#rankModal').classList.contains('hidden')) { nextRankUp(); return; }
       if (!$('#shopModal').classList.contains('hidden')) { hide('#shopModal'); return; }
       if (!$('#nameModal').classList.contains('hidden') && save.name) { hide('#nameModal'); return; }
+      if (performance.now() - input.lockLostAt < 500) return;   // this Esc already released the mouse and paused
       if (G.state === 'playing') pause(); else if (G.state === 'paused') resume();
       return;
     }

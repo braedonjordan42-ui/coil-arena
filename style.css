@@ -657,3 +657,12 @@ canvas.pv.fx.big { width: 80px; height: 80px; }
 .toast.show { transform: translate(-50%, 0); }
 .end-grid b { white-space: nowrap; font-size: clamp(16px, 2.2vw, 22px); }
 #deathCard.victory .kicker { color: var(--yellow); }
+
+/* ---------- mouse lock ---------- */
+.game-frame.locked #game { cursor: none; }
+.lock-hint {
+  position: absolute; z-index: 6; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  padding: 14px 22px; border-radius: 99px; border: 1px solid rgba(56,225,255,.6);
+  background: rgba(13,11,36,.85); color: var(--text); font: 600 16px var(--round);
+  box-shadow: 0 0 30px rgba(56,225,255,.3); animation: pulse 1.6s infinite;
+}
